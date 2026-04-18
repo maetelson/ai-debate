@@ -166,7 +166,15 @@ const listSessionsStmt = db.prepare(`
 const getSessionStmt = db.prepare(`SELECT session_json FROM sessions WHERE id = ? LIMIT 1`);
 
 function verifyToken(request) {
-  return request.headers.authorization === `Bearer ${TOKEN}`;
+  const authHeader = request.headers.authorization;
+  const bridgeHeader = request.headers["x-bridge-token"];
+  const queryToken = new URL(request.url || "/", `http://${request.headers.host}`).searchParams.get(
+    "token"
+  );
+
+  return (
+    authHeader === `Bearer ${TOKEN}` || bridgeHeader === TOKEN || queryToken === TOKEN
+  );
 }
 
 function readBody(request) {

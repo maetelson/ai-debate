@@ -26,6 +26,7 @@ function buildBridgeHeaders() {
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${getBridgeToken()}`,
+    "x-bridge-token": getBridgeToken(),
   };
 }
 
