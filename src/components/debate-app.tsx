@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   MessageSquareText,
   Plus,
+  Trash2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -121,6 +122,10 @@ export function DebateApp({
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [streamingMessages, setStreamingMessages] = useState<StreamingMessage[]>([]);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingSessionTitle, setEditingSessionTitle] = useState("");
+  const [savingSessionId, setSavingSessionId] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
   const selectedDocumentNames = useMemo(() => {
     if (activeSession?.documents.length) {
@@ -148,6 +153,103 @@ export function DebateApp({
     setSessions(data.sessions);
   }
 
+  function startSessionRename(session: SessionSummary) {
+    setEditingSessionId(session.id);
+    setEditingSessionTitle(session.title || session.goal);
+  }
+
+  function cancelSessionRename() {
+    setEditingSessionId(null);
+    setEditingSessionTitle("");
+  }
+
+  async function saveSessionRename(id: string) {
+    const nextTitle = editingSessionTitle.trim();
+    if (!nextTitle) {
+      setErrorMessage("세션 제목은 비워둘 수 없습니다.");
+      return;
+    }
+
+    setSavingSessionId(id);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch(`/api/sessions/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: nextTitle }),
+      });
+      const data = (await response.json()) as {
+        session?: DebateSession;
+        summary?: SessionSummary;
+        error?: string;
+      };
+
+      if (!response.ok || !data.summary || !data.session) {
+        throw new Error(data.error || "Session rename failed.");
+      }
+
+      setSessions((current) =>
+        current.map((session) => (session.id === id ? data.summary! : session))
+      );
+      setActiveSession((current) => (current?.id === id ? data.session! : current));
+      if (activeSession?.id === id) {
+        setTitle(data.session.input.title);
+      }
+      cancelSessionRename();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unknown session rename error."
+      );
+    } finally {
+      setSavingSessionId(null);
+    }
+  }
+
+  async function deleteSession(id: string) {
+    const target = sessions.find((session) => session.id === id);
+    const label = target?.title || target?.goal || "이 세션";
+    if (!window.confirm(`'${label}' 세션을 삭제할까요?`)) {
+      return;
+    }
+
+    setDeletingSessionId(id);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch(`/api/sessions/${id}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || "Session delete failed.");
+      }
+
+      setSessions((current) => current.filter((session) => session.id !== id));
+      if (activeSession?.id === id) {
+        setActiveSession(null);
+        setLatestSnapshot(null);
+        setBrief(null);
+        setStreamingMessages([]);
+        setInstruction("");
+        setTitle("");
+        setGoal("");
+        setStatusMessage("대기 중");
+      }
+      if (editingSessionId === id) {
+        cancelSessionRename();
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unknown session delete error."
+      );
+    } finally {
+      setDeletingSessionId(null);
+    }
+  }
+
   function resetDraft() {
     const fresh = createFreshDraft();
     setInstruction(fresh.instruction);
@@ -161,6 +263,7 @@ export function DebateApp({
     setBrief(null);
     setErrorMessage("");
     setStreamingMessages([]);
+    cancelSessionRename();
   }
 
   function openNewSessionModal() {
@@ -171,6 +274,7 @@ export function DebateApp({
   async function loadSession(id: string) {
     setIsLoadingSession(true);
     setErrorMessage("");
+    cancelSessionRename();
 
     try {
       const response = await fetch(`/api/sessions/${id}`);
@@ -451,15 +555,22 @@ export function DebateApp({
                     </div>
                   ) : (
                     sessions.map((session) => (
-                      <button
+                      <div
                         key={session.id}
-                        type="button"
-                        className={`w-full rounded-2xl border p-4 text-left transition ${
+                        role="button"
+                        tabIndex={0}
+                        className={`group w-full rounded-2xl border p-4 text-left transition ${
                           activeSession?.id === session.id
                             ? "border-zinc-300 bg-white shadow-sm"
                             : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"
                         }`}
                         onClick={() => void loadSession(session.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            void loadSession(session.id);
+                          }
+                        }}
                       >
                         <div className="mb-3 flex items-center justify-between gap-2">
                           <Badge
@@ -467,36 +578,65 @@ export function DebateApp({
                           >
                             {session.status}
                           </Badge>
-                          <span
-                            className={`text-xs ${
-                              activeSession?.id === session.id
-                                ? "text-zinc-500"
-                                : "text-zinc-500"
-                            }`}
-                          >
-                            {formatTimestamp(session.updatedAt)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-zinc-500">
+                              {formatTimestamp(session.updatedAt)}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="h-7 w-7 rounded-full text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-700"
+                              disabled={deletingSessionId === session.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void deleteSession(session.id);
+                              }}
+                            >
+                              {deletingSessionId === session.id ? (
+                                <LoaderCircle className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </div>
-                        <p
-                          className={`text-sm font-medium leading-6 ${
-                            activeSession?.id === session.id
-                              ? "text-zinc-950"
-                              : "text-zinc-950"
-                          }`}
-                        >
-                          {session.title || session.goal}
-                        </p>
-                        <div
-                          className={`mt-3 flex items-center justify-between text-xs ${
-                            activeSession?.id === session.id
-                              ? "text-zinc-500"
-                              : "text-zinc-500"
-                          }`}
-                        >
+                        {editingSessionId === session.id ? (
+                          <Input
+                            value={editingSessionTitle}
+                            autoFocus
+                            disabled={savingSessionId === session.id}
+                            className="h-9 border-zinc-300 bg-white text-sm font-medium"
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) => setEditingSessionTitle(event.target.value)}
+                            onBlur={cancelSessionRename}
+                            onKeyDown={(event) => {
+                              event.stopPropagation();
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void saveSessionRename(session.id);
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelSessionRename();
+                              }
+                            }}
+                          />
+                        ) : (
+                          <p
+                            className="text-sm font-medium leading-6 text-zinc-950"
+                            onDoubleClick={(event) => {
+                              event.stopPropagation();
+                              startSessionRename(session);
+                            }}
+                          >
+                            {session.title || session.goal}
+                          </p>
+                        )}
+                        <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
                           <span>{session.messageCount} messages</span>
                           <span>{session.agreementScore ?? 0}%</span>
                         </div>
-                      </button>
+                      </div>
                     ))
                   )}
                 </div>

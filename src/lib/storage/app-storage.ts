@@ -1,11 +1,19 @@
-import { saveSession as saveLocalSession, loadSession as loadLocalSession, listSessions as listLocalSessions } from "@/lib/persistence";
-import { ConsensusSnapshot, DebateMessage, DebateSession } from "@/lib/types";
+import {
+  deleteSession as deleteLocalSession,
+  loadSession as loadLocalSession,
+  listSessions as listLocalSessions,
+  saveSession as saveLocalSession,
+  updateSessionTitle as updateLocalSessionTitle,
+} from "@/lib/persistence";
+import { ConsensusSnapshot, DebateMessage, DebateSession, SessionSummary } from "@/lib/types";
 
 import {
+  deleteBridgeSession,
   fetchBridgeSession,
   fetchBridgeSessions,
   mergeSessionSummaries,
   sendBridgeEvent,
+  updateBridgeSessionTitle,
 } from "@/lib/storage/bridge-client";
 
 export async function saveSessionStarted(session: DebateSession) {
@@ -67,4 +75,52 @@ export async function listStoredSessions() {
   ]);
 
   return mergeSessionSummaries(localSessions, remoteSessions);
+}
+
+function toSessionSummary(session: DebateSession): SessionSummary {
+  return {
+    id: session.id,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    status: session.status,
+    title: session.input.title,
+    goal: session.input.goal,
+    instruction: session.input.instruction,
+    messageCount: session.messages.length,
+    agreementScore:
+      session.finalReport?.agreementScore ?? session.snapshots.at(-1)?.agreementScore,
+  };
+}
+
+export async function renameStoredSession(id: string, title: string) {
+  const nextTitle = title.trim();
+  if (!nextTitle) {
+    throw new Error("Title is required.");
+  }
+
+  let session: DebateSession | null = null;
+
+  try {
+    session = await updateLocalSessionTitle(id, nextTitle);
+  } catch {
+    session = null;
+  }
+
+  const remoteSession = await updateBridgeSessionTitle(id, nextTitle);
+  if (remoteSession) {
+    session = remoteSession;
+  }
+
+  if (!session) {
+    throw new Error("Session not found.");
+  }
+
+  return {
+    session,
+    summary: toSessionSummary(session),
+  };
+}
+
+export async function deleteStoredSession(id: string) {
+  await Promise.allSettled([deleteLocalSession(id), deleteBridgeSession(id)]);
 }

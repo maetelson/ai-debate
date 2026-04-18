@@ -122,3 +122,55 @@ export async function fetchBridgeSession(id: string) {
     return null;
   }
 }
+
+export async function updateBridgeSessionTitle(id: string, title: string) {
+  if (!hasBridgeConfig()) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(buildBridgeUrl(`/sessions/${id}`), {
+      method: "PATCH",
+      headers: buildBridgeHeaders(),
+      body: JSON.stringify({ title }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      console.error("Bridge update session failed:", response.status, await response.text());
+      return null;
+    }
+
+    const data = (await response.json()) as { session?: DebateSession };
+    return data.session ?? null;
+  } catch (error) {
+    console.error("Bridge update session error:", error);
+    return null;
+  }
+}
+
+export async function deleteBridgeSession(id: string) {
+  if (!hasBridgeConfig()) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(buildBridgeUrl(`/sessions/${id}`), {
+      method: "DELETE",
+      headers: buildBridgeHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      console.error("Bridge delete session failed:", response.status, await response.text());
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Bridge delete session error:", error);
+    return false;
+  }
+}

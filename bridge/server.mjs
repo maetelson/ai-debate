@@ -164,6 +164,11 @@ const listSessionsStmt = db.prepare(`
 `);
 
 const getSessionStmt = db.prepare(`SELECT session_json FROM sessions WHERE id = ? LIMIT 1`);
+const deleteSessionStmt = db.prepare(`DELETE FROM sessions WHERE id = ?`);
+const deleteSessionMessagesStmt = db.prepare(`DELETE FROM messages WHERE session_id = ?`);
+const deleteSessionSnapshotsStmt = db.prepare(`DELETE FROM snapshots WHERE session_id = ?`);
+const deleteSessionReportsStmt = db.prepare(`DELETE FROM final_reports WHERE session_id = ?`);
+const deleteSessionDocumentsStmt = db.prepare(`DELETE FROM documents WHERE session_id = ?`);
 
 function verifyToken(request) {
   const authHeader = request.headers.authorization;
@@ -261,6 +266,27 @@ function persistSessionGraph(session) {
   }
 }
 
+function updateSessionTitle(id, title) {
+  const row = getSessionStmt.get(id);
+  if (!row) {
+    return null;
+  }
+
+  const session = JSON.parse(row.session_json);
+  session.input.title = title;
+  session.updatedAt = new Date().toISOString();
+  persistSessionGraph(session);
+  return session;
+}
+
+function deleteSessionGraph(id) {
+  deleteSessionReportsStmt.run(id);
+  deleteSessionSnapshotsStmt.run(id);
+  deleteSessionMessagesStmt.run(id);
+  deleteSessionDocumentsStmt.run(id);
+  deleteSessionStmt.run(id);
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host}`);
 
@@ -294,6 +320,37 @@ const server = createServer(async (request, response) => {
 
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ session: JSON.parse(row.session_json) }));
+      return;
+    }
+
+    if (request.method === "PATCH" && url.pathname.startsWith("/sessions/")) {
+      const id = decodeURIComponent(url.pathname.replace("/sessions/", ""));
+      const payload = await readBody(request);
+      const title = typeof payload.title === "string" ? payload.title.trim() : "";
+
+      if (!title) {
+        response.writeHead(400, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ error: "Title is required." }));
+        return;
+      }
+
+      const session = updateSessionTitle(id, title);
+      if (!session) {
+        response.writeHead(404, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ error: "Session not found" }));
+        return;
+      }
+
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ session }));
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname.startsWith("/sessions/")) {
+      const id = decodeURIComponent(url.pathname.replace("/sessions/", ""));
+      deleteSessionGraph(id);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
       return;
     }
 

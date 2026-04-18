@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { DebateSession, SessionSummary } from "@/lib/types";
@@ -24,6 +24,26 @@ export async function loadSession(id: string) {
   await ensureDataDir();
   const content = await readFile(getSessionPath(id), "utf8");
   return JSON.parse(content) as DebateSession;
+}
+
+export async function updateSessionTitle(id: string, title: string) {
+  const session = await loadSession(id);
+  const updatedSession: DebateSession = {
+    ...session,
+    updatedAt: new Date().toISOString(),
+    input: {
+      ...session.input,
+      title,
+    },
+  };
+
+  await saveSession(updatedSession);
+  return updatedSession;
+}
+
+export async function deleteSession(id: string) {
+  await ensureDataDir();
+  await rm(getSessionPath(id), { force: true });
 }
 
 export async function listSessions() {
