@@ -668,8 +668,8 @@ export function DebateApp({
               </Button>
             </div>
 
-            <form onSubmit={handleSubmit}>
-              <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
                 <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                   <div className="space-y-6">
                     <Card>
