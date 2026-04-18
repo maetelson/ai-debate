@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     instruction: String(formData.get("instruction") || ""),
     goal: String(formData.get("goal") || ""),
     consensusThreshold: Number(formData.get("consensusThreshold") || DEFAULT_CONSENSUS_THRESHOLD),
-    maxRounds: Number(formData.get("maxRounds") || DEFAULT_MAX_ROUNDS),
+    maxRounds: DEFAULT_MAX_ROUNDS,
     model: String(formData.get("model") || DEFAULT_MODEL),
     apiKey: String(formData.get("apiKey") || ""),
     agents: safeJsonParse<AgentConfig[]>(String(formData.get("agents") || "[]"), []),

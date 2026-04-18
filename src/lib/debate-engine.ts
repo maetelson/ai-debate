@@ -2,7 +2,6 @@ import { nanoid } from "nanoid";
 
 import {
   DEFAULT_MAX_ROUNDS,
-  DEFAULT_SOFT_LIMIT,
   DEFAULT_CONSENSUS_THRESHOLD,
 } from "@/lib/defaults";
 import { parseUploadedFile } from "@/lib/document-parser";
@@ -34,7 +33,8 @@ type RunDebateArgs = {
   onEvent: (event: DebateStreamEvent) => Promise<void> | void;
 };
 
-const MIN_GOAL_ALIGNMENT = 70;
+type ActionClassification = ConsensusSnapshot["actionClassification"];
+
 const DEFAULT_DEBATE_FRAMEWORK = `
 목표:
 주어진 아이디어에 대해 "지금 당장 만들 MVP"를 뽑는 것이 아니라,
@@ -60,6 +60,14 @@ const DEFAULT_DEBATE_FRAMEWORK = `
 - Evidence Quality: 주장 근거가 명확한가
 - Decision Usefulness: 지금 팀이 바로 행동할 수 있는가
 
+종료 규칙:
+- 합의 점수는 참고 신호일 뿐, 유일한 종료 기준이 아니다.
+- 토론은 최대 5라운드까지만 진행한다.
+- 합의는 세부안 동일성이 아니라 다음 행동 분류(proceed / revise / park / kill)의 동일성으로 측정한다.
+- 2라운드 이후 agreement score가 기준 이상이고 치명적 미해결 리스크가 1개 이하이면 종료할 수 있다.
+- 최대 라운드 종료 시에도 기준 미달이면 추가 토론을 금지하고 Judge가 proceed / revise / park / kill 중 하나를 강제 판정한다.
+- Judge는 다수결이 아니라 학습 속도와 리스크 축소 관점에서 판정한다.
+
 토론 절차:
 Round 1. 각 Debater는 서로의 답을 보지 않고 독립적으로 아래를 작성한다.
 - 문제 정의 1문장
@@ -76,8 +84,9 @@ Round 2. 서로의 답을 본 뒤 상대 논리의 약점만 공격한다.
 Round 3. Judge가 판정한다.
 Judge는 아래 규칙을 따른다.
 - "누가 더 설득력 있었는지"가 아니라 "어느 선택이 가장 빨리 불확실성을 줄이는지"로 판단할 것.
-- 75% 이상 한 방향으로 수렴했다고 판단되면 합의로 종료할 것.
-- 합의가 아니면 추가 라운드 없이 실험안 1개만 확정할 것.
+- 행동 분류(proceed / revise / park / kill)가 같은 방향으로 수렴하는지 판단할 것.
+- 2라운드 이후 agreement score가 기준 이상이고 치명적 미해결 리스크가 1개 이하이면 합의로 종료할 것.
+- 5라운드가 끝날 때까지 기준 미달이면 추가 토론 없이 행동 분류 1개를 강제 확정할 것.
 - 최종 결과를 proceed / revise / park / kill 중 하나로만 판정할 것.
 
 최종 출력 형식:
@@ -110,6 +119,14 @@ export function buildEffectiveInstruction(inputInstruction: string) {
     "입력 아이디어:",
     trimmedInstruction || "사용자가 별도 아이디어 설명을 제공하지 않았다.",
   ].join("\n\n");
+}
+
+function normalizeActionClassification(value: unknown): ActionClassification {
+  if (value === "proceed" || value === "revise" || value === "park" || value === "kill") {
+    return value;
+  }
+
+  return "revise";
 }
 
 export function normalizeAgents(agents: AgentConfig[]) {
@@ -152,7 +169,7 @@ export function buildDebateBrief(input: DebateInput, documents: ParsedDocument[]
 }
 
 export function getRoundPhase(round: number) {
-  return round >= DEFAULT_SOFT_LIMIT ? "converge" : "explore";
+  return round >= 3 ? "converge" : "explore";
 }
 
 export function shouldStopDebate(
@@ -162,8 +179,10 @@ export function shouldStopDebate(
   threshold: number
 ) {
   if (
+    round >= 2 &&
     snapshot.agreementScore >= threshold &&
-    snapshot.goalAlignmentScore >= MIN_GOAL_ALIGNMENT
+    snapshot.classificationAlignmentScore >= threshold &&
+    snapshot.criticalUnresolvedRisks.length <= 1
   ) {
     return "consensus_reached" as const;
   }
@@ -281,9 +300,15 @@ ${context}
 Score the debate based on:
 - goal fit
 - evidence strength
-- whether one main conclusion is emerging
+- whether one next action classification is emerging
 - whether remaining objections are minor or critical
+- whether the best decision reduces uncertainty fastest
 
+You are a Judge, not a vote counter.
+Do not use majority-rule logic.
+Prioritize learning speed and risk reduction.
+Choose one action classification only: proceed, revise, park, or kill.
+List only truly critical unresolved risks.
 Keep the assessment strict. Do not inflate scores without evidence.
 `.trim();
 }
@@ -349,6 +374,15 @@ async function generateModeratorAssessment(args: {
             agreement_score: { type: "number" },
             goal_alignment_score: { type: "number" },
             evidence_strength_score: { type: "number" },
+            classification_alignment_score: { type: "number" },
+            action_classification: {
+              type: "string",
+              enum: ["proceed", "revise", "park", "kill"],
+            },
+            critical_unresolved_risks: {
+              type: "array",
+              items: { type: "string" },
+            },
             current_position: { type: "string" },
             rationale: { type: "string" },
             open_disputes: {
@@ -361,6 +395,9 @@ async function generateModeratorAssessment(args: {
             "agreement_score",
             "goal_alignment_score",
             "evidence_strength_score",
+            "classification_alignment_score",
+            "action_classification",
+            "critical_unresolved_risks",
             "current_position",
             "rationale",
             "open_disputes",
@@ -375,6 +412,9 @@ async function generateModeratorAssessment(args: {
     agreement_score: 0,
     goal_alignment_score: 0,
     evidence_strength_score: 0,
+    classification_alignment_score: 0,
+    action_classification: "revise",
+    critical_unresolved_risks: ["Judge response could not be parsed."],
     current_position: "Structured response parsing failed.",
     rationale: "The model returned an unreadable JSON payload.",
     open_disputes: ["Moderator response could not be parsed."],
@@ -418,6 +458,7 @@ Return finalAnswer as GitHub-flavored Markdown grounded in the debate.
 If the instruction asks for tables, you must include valid markdown tables with header rows and separator rows.
 Do not collapse required tables into bullet points or prose.
 Preserve the requested final output structure exactly when possible.
+Use the same final decision label as the Judge classification.
 `.trim(),
     text: {
       format: {
@@ -429,10 +470,14 @@ Preserve the requested final output structure exactly when possible.
           additionalProperties: false,
           properties: {
             finalAnswer: { type: "string" },
+            decision: {
+              type: "string",
+              enum: ["proceed", "revise", "park", "kill"],
+            },
             keyEvidence: { type: "array", items: { type: "string" } },
             remainingDisputes: { type: "array", items: { type: "string" } },
           },
-          required: ["finalAnswer", "keyEvidence", "remainingDisputes"],
+          required: ["finalAnswer", "decision", "keyEvidence", "remainingDisputes"],
         },
       },
     },
@@ -440,6 +485,7 @@ Preserve the requested final output structure exactly when possible.
 
   const parsed = safeJsonParse(response.output_text, {
     finalAnswer: args.snapshot.currentPosition,
+    decision: args.snapshot.actionClassification,
     keyEvidence: [],
     remainingDisputes: args.snapshot.openDisputes,
   });
@@ -448,6 +494,7 @@ Preserve the requested final output structure exactly when possible.
     finalAnswer: parsed.finalAnswer,
     agreementScore: args.snapshot.agreementScore,
     goalAlignmentScore: args.snapshot.goalAlignmentScore,
+    decision: normalizeActionClassification(parsed.decision),
     keyEvidence: parsed.keyEvidence,
     remainingDisputes: parsed.remainingDisputes,
     roundCount: args.snapshot.round,
@@ -489,7 +536,7 @@ export async function runDebate({ input, files, onEvent }: RunDebateArgs) {
       instruction: input.instruction,
       goal: input.goal,
       consensusThreshold: clamp(input.consensusThreshold || DEFAULT_CONSENSUS_THRESHOLD, 50, 95),
-      maxRounds: clamp(input.maxRounds || DEFAULT_MAX_ROUNDS, 10, 50),
+      maxRounds: DEFAULT_MAX_ROUNDS,
       model: input.model,
       agents: input.agents,
     },
@@ -578,11 +625,28 @@ export async function runDebate({ input, files, onEvent }: RunDebateArgs) {
         agreementScore: clamp(Math.round(moderatorContent.agreement_score), 0, 100),
         goalAlignmentScore: clamp(Math.round(moderatorContent.goal_alignment_score), 0, 100),
         evidenceStrengthScore: clamp(Math.round(moderatorContent.evidence_strength_score), 0, 100),
+        classificationAlignmentScore: clamp(
+          Math.round(moderatorContent.classification_alignment_score),
+          0,
+          100
+        ),
+        actionClassification: normalizeActionClassification(
+          moderatorContent.action_classification
+        ),
+        criticalUnresolvedRisks: moderatorContent.critical_unresolved_risks,
         currentPosition: moderatorContent.current_position,
         openDisputes: moderatorContent.open_disputes,
         rationale: moderatorContent.rationale,
-        shouldContinue: moderatorContent.should_continue,
+        shouldContinue: true,
       };
+
+      finishReason = shouldStopDebate(
+        snapshot,
+        round,
+        session.input.maxRounds,
+        session.input.consensusThreshold
+      );
+      snapshot.shouldContinue = !finishReason;
 
       session.messages.push(moderatorMessage);
       session.snapshots.push(snapshot);
@@ -593,14 +657,7 @@ export async function runDebate({ input, files, onEvent }: RunDebateArgs) {
       await onEvent({ type: "message.completed", message: moderatorMessage });
       await onEvent({ type: "consensus.updated", snapshot });
 
-      finishReason = shouldStopDebate(
-        snapshot,
-        round,
-        session.input.maxRounds,
-        session.input.consensusThreshold
-      );
-
-      if (finishReason || !snapshot.shouldContinue) {
+      if (finishReason) {
         finishReason = finishReason ?? "max_rounds_reached";
         break;
       }

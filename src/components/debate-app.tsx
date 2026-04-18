@@ -225,6 +225,7 @@ export function DebateApp({
   const [editingSessionTitle, setEditingSessionTitle] = useState("");
   const [savingSessionId, setSavingSessionId] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [floatingMessage, setFloatingMessage] = useState("");
 
   const selectedDocumentNames = useMemo(() => {
     if (activeSession?.documents.length) {
@@ -257,6 +258,18 @@ export function DebateApp({
 
     writeCachedSession(activeSession);
   }, [activeSession]);
+
+  useEffect(() => {
+    if (!floatingMessage || isLoadingSession) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setFloatingMessage("");
+    }, 1800);
+
+    return () => window.clearTimeout(timeout);
+  }, [floatingMessage, isLoadingSession]);
 
   async function loadSessions() {
     const response = await fetch("/api/sessions");
@@ -385,6 +398,7 @@ export function DebateApp({
 
   async function loadSession(id: string) {
     setIsLoadingSession(true);
+    setFloatingMessage("세션을 불러오는 중입니다");
     setErrorMessage("");
     cancelSessionRename();
 
@@ -420,6 +434,7 @@ export function DebateApp({
       setErrorMessage(
         error instanceof Error ? error.message : "Unknown session loading error."
       );
+      setFloatingMessage("세션을 불러오지 못했습니다");
     } finally {
       setIsLoadingSession(false);
     }
@@ -443,7 +458,7 @@ export function DebateApp({
     formData.append("title", title);
     formData.append("goal", goal);
     formData.append("consensusThreshold", String(consensusThreshold));
-    formData.append("maxRounds", String(Math.min(Math.max(maxRounds || 10, 10), 50)));
+    formData.append("maxRounds", String(DEFAULT_MAX_ROUNDS));
     formData.append("model", model);
     formData.append("agents", JSON.stringify(agents));
 
@@ -633,6 +648,14 @@ export function DebateApp({
   return (
     <>
       <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(24,24,27,0.08),_transparent_28%),linear-gradient(180deg,#fcfcfd_0%,#f4f4f5_100%)]">
+        {floatingMessage ? (
+          <div className="pointer-events-none fixed left-1/2 top-4 z-50 -translate-x-1/2">
+            <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 shadow-lg">
+              <LoaderCircle className="h-4 w-4 animate-spin text-zinc-500" />
+              <span>{floatingMessage}</span>
+            </div>
+          </div>
+        ) : null}
         <div className="mx-auto flex h-screen w-full max-w-[1680px] gap-4 p-4 lg:p-6">
           <aside className="hidden w-[320px] shrink-0 lg:block">
             <div className="flex h-full flex-col rounded-[28px] bg-white p-4 shadow-sm">
@@ -658,11 +681,6 @@ export function DebateApp({
 
               <ScrollArea className="flex-1 pr-1">
                 <div className="space-y-2">
-                  {isLoadingSession ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      세션을 불러오는 중입니다…
-                    </div>
-                  ) : null}
                   {sessions.length === 0 ? (
                     <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
                       저장된 세션이 아직 없습니다.
@@ -699,7 +717,8 @@ export function DebateApp({
                             <Button
                               type="button"
                               variant="ghost"
-                              className="h-7 w-7 rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900"
+                              className="h-8 w-8 shrink-0 rounded-full border border-zinc-300 bg-zinc-100 text-zinc-900 shadow-sm transition hover:bg-zinc-200 hover:text-zinc-950"
+                              aria-label="세션 삭제"
                               disabled={deletingSessionId === session.id}
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -852,9 +871,14 @@ export function DebateApp({
                       {activeSession?.finalReport ? (
                         <div className="pt-2">
                           <div className="rounded-[24px] bg-zinc-950 p-6 text-white">
-                            <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-400">
-                              Final Consensus
-                            </p>
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-400">
+                                Final Consensus
+                              </p>
+                              <Badge variant="secondary" className="bg-white/10 text-white">
+                                {activeSession.finalReport.decision}
+                              </Badge>
+                            </div>
                             <div className="mt-4 text-base leading-7 text-white">
                               <MarkdownBlock
                                 content={activeSession.finalReport.finalAnswer}
@@ -920,12 +944,29 @@ export function DebateApp({
                         label="Evidence Strength"
                         value={`${latestSnapshot?.evidenceStrengthScore ?? 0}%`}
                       />
+                      <MetricRow
+                        label="Classification Alignment"
+                        value={`${latestSnapshot?.classificationAlignmentScore ?? 0}%`}
+                      />
                       <Separator />
                       <div className="space-y-2">
                         <p className="text-sm font-medium text-zinc-800">현재 남은 쟁점</p>
                         <p className="text-sm leading-6 text-zinc-600">
                           {latestSnapshot?.openDisputes[0] ||
                             "토론이 시작되면 남은 쟁점이 이곳에 표시됩니다."}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-zinc-800">Judge Decision</p>
+                        <p className="text-sm leading-6 text-zinc-600">
+                          {latestSnapshot?.actionClassification ?? "아직 판정 전입니다."}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-zinc-800">치명적 미해결 리스크</p>
+                        <p className="text-sm leading-6 text-zinc-600">
+                          {latestSnapshot?.criticalUnresolvedRisks[0] ||
+                            "치명적 미해결 리스크가 아직 없습니다."}
                         </p>
                       </div>
                       {brief ? (
@@ -1120,25 +1161,8 @@ export function DebateApp({
                             className="w-full"
                           />
                         </Field>
-                        <Field
-                          label="Max Rounds"
-                          helper="기본 20, 허용 범위는 10~50입니다."
-                        >
-                          <Input
-                            type="number"
-                            min={10}
-                            max={50}
-                            value={maxRounds}
-                            onChange={(event) =>
-                              setMaxRounds(
-                                Math.min(
-                                  Math.max(Number(event.target.value) || 10, 10),
-                                  50
-                                )
-                              )
-                            }
-                            className="w-full"
-                          />
+                        <Field label="Max Rounds">
+                          <Input value="5" readOnly className="w-full bg-zinc-50" />
                         </Field>
                       </CardContent>
                     </Card>

@@ -37,7 +37,7 @@ describe("debate engine helpers", () => {
         instruction: "Choose a rollout plan.",
         goal: "문서 근거만으로 가장 안전한 전략 1개를 고른다.",
         consensusThreshold: 80,
-        maxRounds: 12,
+        maxRounds: 5,
         model: DEFAULT_MODEL,
         agents,
       },
@@ -63,71 +63,110 @@ describe("debate engine helpers", () => {
   it("always prepends the default debate framework", () => {
     const instruction = buildEffectiveInstruction("be/fe 2명이 2주 안에 검증할 실험을 정하라.");
 
-    expect(instruction).toContain('주어진 아이디어에 대해 "지금 당장 만들 MVP"를 뽑는 것이 아니라');
+    expect(instruction).toContain(
+      '주어진 아이디어에 대해 "지금 당장 만들 MVP"를 뽑는 것이 아니라'
+    );
     expect(instruction).toContain("핵심 가설 표");
     expect(instruction).toContain("|---|---|---|---|");
     expect(instruction).toContain("|---|---|---|---|---|---|");
     expect(instruction).toContain("be/fe 2명이 2주 안에 검증할 실험을 정하라.");
   });
 
-  it("switches to converge phase from round 8", () => {
-    expect(getRoundPhase(7)).toBe("explore");
-    expect(getRoundPhase(8)).toBe("converge");
+  it("switches to converge phase from round 3", () => {
+    expect(getRoundPhase(2)).toBe("explore");
+    expect(getRoundPhase(3)).toBe("converge");
   });
 
-  it("stops only when agreement and goal alignment both pass", () => {
+  it("does not stop before round 2 even with strong scores", () => {
     expect(
       shouldStopDebate(
         {
-          round: 5,
-          agreementScore: 81,
-          goalAlignmentScore: 69,
-          evidenceStrengthScore: 82,
-          currentPosition: "Not enough fit yet.",
-          openDisputes: ["Alignment is still weak."],
-          rationale: "Goal fit is too low.",
+          round: 1,
+          agreementScore: 92,
+          goalAlignmentScore: 88,
+          evidenceStrengthScore: 90,
+          classificationAlignmentScore: 91,
+          actionClassification: "revise",
+          criticalUnresolvedRisks: [],
+          currentPosition: "A strong early direction exists.",
+          openDisputes: [],
+          rationale: "The signals are strong but still too early.",
           shouldContinue: true,
         },
+        1,
         5,
-        12,
         80
       )
     ).toBeNull();
+  });
 
+  it("stops after round 2 when classification aligns and critical risks are minimal", () => {
     expect(
       shouldStopDebate(
         {
-          round: 6,
-          agreementScore: 82,
-          goalAlignmentScore: 78,
-          evidenceStrengthScore: 85,
-          currentPosition: "Consensus is strong.",
-          openDisputes: [],
-          rationale: "The core conclusion is stable.",
+          round: 2,
+          agreementScore: 84,
+          goalAlignmentScore: 77,
+          evidenceStrengthScore: 86,
+          classificationAlignmentScore: 85,
+          actionClassification: "proceed",
+          criticalUnresolvedRisks: ["Pricing assumption needs a quick smoke test."],
+          currentPosition: "The team is converging on a proceed decision.",
+          openDisputes: ["Only one narrow risk remains."],
+          rationale: "The next action category is aligned and remaining risk is bounded.",
           shouldContinue: false,
         },
-        6,
-        12,
+        2,
+        5,
         80
       )
     ).toBe("consensus_reached");
   });
 
-  it("stops at hard limit when consensus never arrives", () => {
+  it("does not stop when action classification is not aligned enough", () => {
     expect(
       shouldStopDebate(
         {
-          round: 12,
-          agreementScore: 61,
-          goalAlignmentScore: 63,
-          evidenceStrengthScore: 70,
-          currentPosition: "Still unresolved.",
-          openDisputes: ["Two plans remain."],
-          rationale: "The debate is stalled.",
+          round: 3,
+          agreementScore: 88,
+          goalAlignmentScore: 82,
+          evidenceStrengthScore: 83,
+          classificationAlignmentScore: 63,
+          actionClassification: "revise",
+          criticalUnresolvedRisks: [],
+          currentPosition: "The details are narrowing, but the action class is still split.",
+          openDisputes: ["Proceed versus revise is still contested."],
+          rationale: "Agreement is high, but not on the next action bucket.",
           shouldContinue: true,
         },
-        12,
-        12,
+        3,
+        5,
+        80
+      )
+    ).toBeNull();
+  });
+
+  it("forces a decision at round 5 when consensus never arrives", () => {
+    expect(
+      shouldStopDebate(
+        {
+          round: 5,
+          agreementScore: 61,
+          goalAlignmentScore: 66,
+          evidenceStrengthScore: 72,
+          classificationAlignmentScore: 58,
+          actionClassification: "park",
+          criticalUnresolvedRisks: [
+            "Distribution channel demand remains unclear.",
+            "Acquisition cost assumptions are untested.",
+          ],
+          currentPosition: "The debate did not fully converge.",
+          openDisputes: ["Proceed and revise both remain in play."],
+          rationale: "Judge must now force the most useful next action.",
+          shouldContinue: false,
+        },
+        5,
+        5,
         80
       )
     ).toBe("max_rounds_reached");

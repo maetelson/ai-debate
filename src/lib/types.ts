@@ -63,6 +63,9 @@ export type ConsensusSnapshot = {
   agreementScore: number;
   goalAlignmentScore: number;
   evidenceStrengthScore: number;
+  classificationAlignmentScore: number;
+  actionClassification: "proceed" | "revise" | "park" | "kill";
+  criticalUnresolvedRisks: string[];
   currentPosition: string;
   openDisputes: string[];
   rationale: string;
@@ -73,6 +76,7 @@ export type FinalReport = {
   finalAnswer: string;
   agreementScore: number;
   goalAlignmentScore: number;
+  decision: "proceed" | "revise" | "park" | "kill";
   keyEvidence: string[];
   remainingDisputes: string[];
   roundCount: number;
