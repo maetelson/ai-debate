@@ -414,7 +414,10 @@ ${args.messages
   .map((message) => `- ${message.agentName}: ${message.content}`)
   .join("\n")}
 
-Return a crisp final answer grounded in the debate.
+Return finalAnswer as GitHub-flavored Markdown grounded in the debate.
+If the instruction asks for tables, you must include valid markdown tables with header rows and separator rows.
+Do not collapse required tables into bullet points or prose.
+Preserve the requested final output structure exactly when possible.
 `.trim(),
     text: {
       format: {

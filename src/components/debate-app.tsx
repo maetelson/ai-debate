@@ -127,10 +127,14 @@ function sanitizeDisplayContent(content: string) {
 function MarkdownBlock({
   content,
   className = "",
+  tone = "light",
 }: {
   content: string;
   className?: string;
+  tone?: "light" | "dark";
 }) {
+  const isDark = tone === "dark";
+
   return (
     <div className={`min-w-0 overflow-hidden ${className}`}>
       <ReactMarkdown
@@ -142,17 +146,45 @@ function MarkdownBlock({
           li: ({ children }) => <li>{children}</li>,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           table: ({ children }) => (
-            <div className="mt-4 overflow-x-auto rounded-xl border border-white/10 bg-black/10">
+            <div
+              className={`mt-4 overflow-x-auto rounded-xl border ${
+                isDark
+                  ? "border-white/10 bg-white/5"
+                  : "border-zinc-200 bg-zinc-50"
+              }`}
+            >
               <table className="w-full border-collapse text-left text-sm">{children}</table>
             </div>
           ),
-          thead: ({ children }) => <thead className="bg-black/10">{children}</thead>,
-          th: ({ children }) => (
-            <th className="border-b border-white/10 px-3 py-2 font-medium">{children}</th>
+          thead: ({ children }) => (
+            <thead className={isDark ? "bg-white/5" : "bg-zinc-100"}>{children}</thead>
           ),
-          td: ({ children }) => <td className="border-t border-white/10 px-3 py-2 align-top">{children}</td>,
+          th: ({ children }) => (
+            <th
+              className={`border-b px-3 py-2 font-medium ${
+                isDark ? "border-white/10" : "border-zinc-200"
+              }`}
+            >
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td
+              className={`border-t px-3 py-2 align-top ${
+                isDark ? "border-white/10" : "border-zinc-200"
+              }`}
+            >
+              {children}
+            </td>
+          ),
           code: ({ children }) => (
-            <code className="rounded bg-black/10 px-1.5 py-0.5 text-[0.9em]">{children}</code>
+            <code
+              className={`rounded px-1.5 py-0.5 text-[0.9em] ${
+                isDark ? "bg-white/10" : "bg-zinc-100"
+              }`}
+            >
+              {children}
+            </code>
           ),
         }}
       >
@@ -827,6 +859,7 @@ export function DebateApp({
                               <MarkdownBlock
                                 content={activeSession.finalReport.finalAnswer}
                                 className="text-white"
+                                tone="dark"
                               />
                             </div>
                             <div className="mt-5 grid gap-4 md:grid-cols-2">
