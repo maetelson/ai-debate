@@ -42,3 +42,5 @@ next-env.d.ts
 
 # local agent notes
 agent.md
+
+.vercel

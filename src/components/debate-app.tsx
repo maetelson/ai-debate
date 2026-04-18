@@ -7,7 +7,6 @@ import {
   ChevronDown,
   LoaderCircle,
   MessageSquareText,
-  Pencil,
   Plus,
   Settings2,
   Sparkles,
@@ -146,10 +145,6 @@ export function DebateApp({
 
   function openNewSessionModal() {
     resetDraft();
-    setIsComposerOpen(true);
-  }
-
-  function openEditSessionModal() {
     setIsComposerOpen(true);
   }
 
@@ -430,16 +425,6 @@ export function DebateApp({
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button variant="outline" onClick={openEditSessionModal}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    설정 수정
-                  </Button>
-                  <Button onClick={openNewSessionModal}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    새 세션
-                  </Button>
-                </div>
               </div>
 
               {(selectedGoal || selectedInstruction || selectedAgents.length > 0) && (
@@ -688,8 +673,14 @@ export function DebateApp({
       </div>
 
       {isComposerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-[0_30px_80px_rgba(9,9,11,0.18)]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 p-4 backdrop-blur-sm"
+          onClick={() => setIsComposerOpen(false)}
+        >
+          <div
+            className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-[0_30px_80px_rgba(9,9,11,0.18)]"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-6 py-5">
               <div>
                 <p className="text-sm font-medium text-zinc-500">New Session</p>
@@ -781,10 +772,7 @@ export function DebateApp({
                           >
                             <div className="mb-3 flex items-center justify-between">
                               <div>
-                                <p className="text-sm font-semibold text-zinc-900">
-                                  {agent.name}
-                                </p>
-                                <p className="text-xs text-zinc-600">{agent.role}</p>
+                                <p className="text-sm font-semibold text-zinc-900">{agent.role}</p>
                               </div>
                               {agents.length > 2 ? (
                                 <Button
@@ -802,20 +790,6 @@ export function DebateApp({
                               ) : null}
                             </div>
                             <div className="grid gap-3">
-                              <Input
-                                value={agent.name}
-                                onChange={(event) =>
-                                  updateAgent(agent.id, "name", event.target.value)
-                                }
-                                placeholder="Agent name"
-                              />
-                              <Input
-                                value={agent.role}
-                                onChange={(event) =>
-                                  updateAgent(agent.id, "role", event.target.value)
-                                }
-                                placeholder="Role"
-                              />
                               <Textarea
                                 value={agent.persona}
                                 onChange={(event) =>
@@ -923,38 +897,6 @@ export function DebateApp({
                       </CardContent>
                     </Card>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Session Summary</CardTitle>
-                        <CardDescription>
-                          시작 전에 선택된 설정을 한 번 더 확인합니다.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <MetaBlock
-                          label="Goal"
-                          value={goal || "아직 목표가 입력되지 않았습니다."}
-                        />
-                        <MetaBlock
-                          label="Instruction"
-                          value={instruction || "아직 instruction이 입력되지 않았습니다."}
-                        />
-                        <MetaBlock
-                          label="Agents"
-                          value={agents
-                            .map((agent) => `${agent.name} · ${agent.role} · ${agent.persona}`)
-                            .join("\n")}
-                        />
-                        <MetaBlock
-                          label="Documents"
-                          value={
-                            files.length
-                              ? files.map((file) => file.name).join(", ")
-                              : "아직 문서가 선택되지 않았습니다."
-                          }
-                        />
-                      </CardContent>
-                    </Card>
                   </div>
                 </div>
               </div>
@@ -974,7 +916,7 @@ export function DebateApp({
                         Debate running
                       </>
                     ) : (
-                      "토론 시작"
+                      "Debate 시작하기"
                     )}
                   </Button>
                 </div>
