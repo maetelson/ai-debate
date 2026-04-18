@@ -18,6 +18,7 @@ import {
   DebateStreamEvent,
   FinalReport,
   ParsedDocument,
+  StreamingMessage,
 } from "@/lib/types";
 import { clamp, safeJsonParse, truncate } from "@/lib/utils";
 
@@ -205,18 +206,45 @@ Keep the assessment strict. Do not inflate scores without evidence.
 `.trim();
 }
 
-async function generateFreeformTurn(args: {
+async function streamFreeformTurn(args: {
   apiKey?: string;
   model: string;
   prompt: string;
+  onStart: (message: StreamingMessage) => Promise<void> | void;
+  onDelta: (messageId: string, delta: string) => Promise<void> | void;
+  agent: AgentConfig;
+  round: number;
 }) {
   const client = createOpenAIClient(args.apiKey);
-  const response = await client.responses.create({
+  const streamingMessage: StreamingMessage = {
+    id: nanoid(),
+    agentId: args.agent.id,
+    agentName: args.agent.name,
+    role: args.agent.role,
+    round: args.round,
+    content: "",
+    createdAt: new Date().toISOString(),
+    status: "thinking",
+  };
+
+  await args.onStart(streamingMessage);
+
+  const stream = client.responses.stream({
     model: args.model,
     input: args.prompt,
   });
 
-  return response.output_text.trim();
+  let content = "";
+
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta" && event.delta) {
+      content += event.delta;
+      await args.onDelta(streamingMessage.id, event.delta);
+    }
+  }
+
+  await stream.finalResponse();
+  return content.trim();
 }
 
 async function generateModeratorAssessment(args: {
@@ -412,17 +440,33 @@ export async function runDebate({ input, files, onEvent }: RunDebateArgs) {
         round,
         phase,
       });
-      const content = await generateFreeformTurn({
+      const content = await streamFreeformTurn({
         apiKey: input.apiKey,
         model: input.model,
         prompt,
+        agent,
+        round,
+        onStart: (message) => onEvent({ type: "message.started", message }),
+        onDelta: (messageId, delta) => onEvent({ type: "message.delta", messageId, delta }),
       });
       const message = createMessage(agent, round, content);
       session.messages.push(message);
       session.updatedAt = new Date().toISOString();
       await saveSession(session);
-      await onEvent({ type: "message.added", message });
+      await onEvent({ type: "message.completed", message });
     }
+
+    const moderatorStreamingMessage: StreamingMessage = {
+      id: nanoid(),
+      agentId: moderator.id,
+      agentName: moderator.name,
+      role: moderator.role,
+      round,
+      content: "",
+      createdAt: new Date().toISOString(),
+      status: "thinking",
+    };
+    await onEvent({ type: "message.started", message: moderatorStreamingMessage });
 
     const moderatorContent = await generateModeratorAssessment({
       apiKey: input.apiKey,
@@ -457,7 +501,7 @@ export async function runDebate({ input, files, onEvent }: RunDebateArgs) {
     session.updatedAt = new Date().toISOString();
 
     await saveSession(session);
-    await onEvent({ type: "message.added", message: moderatorMessage });
+    await onEvent({ type: "message.completed", message: moderatorMessage });
     await onEvent({ type: "consensus.updated", snapshot });
 
     finishReason = shouldStopDebate(

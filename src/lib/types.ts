@@ -46,6 +46,17 @@ export type DebateMessage = {
   createdAt: string;
 };
 
+export type StreamingMessage = {
+  id: string;
+  agentId: string;
+  agentName: string;
+  role: string;
+  round: number;
+  content: string;
+  createdAt: string;
+  status: "thinking" | "streaming";
+};
+
 export type ConsensusSnapshot = {
   round: number;
   agreementScore: number;
@@ -85,6 +96,9 @@ export type DebateStreamEvent =
   | { type: "document.parsed"; documents: ParsedDocument[] }
   | { type: "brief.generated"; brief: DebateBrief }
   | { type: "round.started"; round: number; phase: "explore" | "converge" }
+  | { type: "message.started"; message: StreamingMessage }
+  | { type: "message.delta"; messageId: string; delta: string }
+  | { type: "message.completed"; message: DebateMessage }
   | { type: "message.added"; message: DebateMessage }
   | { type: "consensus.updated"; snapshot: ConsensusSnapshot }
   | { type: "debate.completed"; session: DebateSession }

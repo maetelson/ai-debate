@@ -37,6 +37,7 @@ import {
   DebateSession,
   DebateStreamEvent,
   SessionSummary,
+  StreamingMessage,
 } from "@/lib/types";
 import { formatTimestamp } from "@/lib/utils";
 
@@ -83,6 +84,10 @@ function messageLayout(role: string) {
   };
 }
 
+function sanitizeDisplayContent(content: string) {
+  return content.replace(/\s*\[[^\]]+\]/g, "").trim();
+}
+
 export function DebateApp({
   initialSessions,
 }: {
@@ -106,6 +111,7 @@ export function DebateApp({
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [streamingMessages, setStreamingMessages] = useState<StreamingMessage[]>([]);
 
   const selectedDocumentNames = useMemo(() => {
     if (activeSession?.documents.length) {
@@ -122,6 +128,10 @@ export function DebateApp({
     activeSession?.input.consensusThreshold ?? consensusThreshold;
   const selectedMaxRounds = activeSession?.input.maxRounds ?? maxRounds;
   const selectedModel = activeSession?.input.model ?? model;
+  const displayMessages = useMemo(
+    () => [...(activeSession?.messages ?? []), ...streamingMessages],
+    [activeSession?.messages, streamingMessages]
+  );
 
   async function loadSessions() {
     const response = await fetch("/api/sessions");
@@ -140,6 +150,7 @@ export function DebateApp({
     setFiles(fresh.files);
     setBrief(null);
     setErrorMessage("");
+    setStreamingMessages([]);
   }
 
   function openNewSessionModal() {
@@ -171,6 +182,7 @@ export function DebateApp({
         setMaxRounds(data.session?.input.maxRounds ?? DEFAULT_MAX_ROUNDS);
         setFiles([]);
         setBrief(null);
+        setStreamingMessages([]);
         setStatusMessage(
           data.session?.status === "completed" ? "저장된 세션 불러옴" : "세션 확인 중"
         );
@@ -190,6 +202,7 @@ export function DebateApp({
     setBrief(null);
     setActiveSession(null);
     setLatestSnapshot(null);
+    setStreamingMessages([]);
     setStatusMessage("문서 업로드 준비 중");
     setIsComposerOpen(false);
 
@@ -266,6 +279,40 @@ export function DebateApp({
           }
 
           if (payload.type === "message.added") {
+            setActiveSession((current) =>
+              current
+                ? {
+                    ...current,
+                    messages: [...current.messages, payload.message],
+                    updatedAt: new Date().toISOString(),
+                  }
+                : current
+            );
+          }
+
+          if (payload.type === "message.started") {
+            setStreamingMessages((current) => [...current, payload.message]);
+            setStatusMessage(`${payload.message.agentName} thinking...`);
+          }
+
+          if (payload.type === "message.delta") {
+            setStreamingMessages((current) =>
+              current.map((message) =>
+                message.id === payload.messageId
+                  ? {
+                      ...message,
+                      content: message.content + payload.delta,
+                      status: "streaming",
+                    }
+                  : message
+              )
+            );
+          }
+
+          if (payload.type === "message.completed") {
+            setStreamingMessages((current) =>
+              current.filter((message) => message.agentId !== payload.message.agentId)
+            );
             setActiveSession((current) =>
               current
                 ? {
@@ -452,16 +499,14 @@ export function DebateApp({
                           {selectedInstruction || "좌측 사이드바에서 새 세션을 시작하세요."}
                         </CardDescription>
                       </div>
-                      <Badge variant="outline">
-                        {activeSession?.messages.length ?? 0} messages
-                      </Badge>
+                      <Badge variant="outline">{displayMessages.length} messages</Badge>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="h-[640px] pt-5">
                   <ScrollArea className="h-full pr-2">
                     <div className="space-y-4">
-                      {!activeSession?.messages.length ? (
+                      {!displayMessages.length ? (
                         <EmptyState
                           icon={MessageSquareText}
                           title="대화가 아직 시작되지 않았습니다"
@@ -474,8 +519,10 @@ export function DebateApp({
                           }
                         />
                       ) : (
-                        activeSession.messages.map((message) => {
+                        displayMessages.map((message) => {
                           const layout = messageLayout(message.role);
+                          const isStreaming = "status" in message;
+                          const visibleContent = sanitizeDisplayContent(message.content);
 
                           return (
                             <div key={message.id} className={layout.wrapper}>
@@ -507,7 +554,7 @@ export function DebateApp({
                                       : "text-zinc-800"
                                   }`}
                                 >
-                                  {message.content}
+                                  {visibleContent || (isStreaming ? "thinking..." : "")}
                                 </p>
                               </div>
                             </div>
