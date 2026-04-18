@@ -9,6 +9,7 @@ export type AgentConfig = {
 };
 
 export type DebateInput = {
+  title: string;
   instruction: string;
   goal: string;
   consensusThreshold: number;
@@ -125,6 +126,7 @@ export type SessionSummary = {
   createdAt: string;
   updatedAt: string;
   status: DebateSession["status"];
+  title: string;
   goal: string;
   instruction: string;
   messageCount: number;

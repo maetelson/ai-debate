@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   }
 
   const input = {
+    title: String(formData.get("title") || ""),
     instruction: String(formData.get("instruction") || ""),
     goal: String(formData.get("goal") || ""),
     consensusThreshold: Number(formData.get("consensusThreshold") || DEFAULT_CONSENSUS_THRESHOLD),
@@ -29,6 +30,10 @@ export async function POST(request: Request) {
 
   if (!input.goal.trim()) {
     return NextResponse.json({ error: "goal required" }, { status: 400 });
+  }
+
+  if (!input.title.trim()) {
+    return NextResponse.json({ error: "title required" }, { status: 400 });
   }
 
   if (!input.instruction.trim()) {

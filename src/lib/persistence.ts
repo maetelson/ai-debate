@@ -46,6 +46,7 @@ export async function listSessions() {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       status: session.status,
+      title: truncate(session.input.title, 48),
       goal: truncate(session.input.goal, 90),
       instruction: truncate(session.input.instruction, 110),
       messageCount: session.messages.length,

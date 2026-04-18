@@ -403,6 +403,7 @@ export async function runDebate({ input, files, onEvent }: RunDebateArgs) {
     updatedAt: new Date().toISOString(),
     status: "running",
       input: {
+        title: input.title,
         instruction: input.instruction,
         goal: input.goal,
         consensusThreshold: clamp(input.consensusThreshold || DEFAULT_CONSENSUS_THRESHOLD, 50, 95),

@@ -6,7 +6,6 @@ import {
   LoaderCircle,
   MessageSquareText,
   Plus,
-  Sparkles,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +42,7 @@ import { formatTimestamp } from "@/lib/utils";
 
 function createFreshDraft() {
   return {
+    title: "",
     instruction: "",
     goal: "",
     model: DEFAULT_MODEL,
@@ -94,6 +94,7 @@ export function DebateApp({
   initialSessions: SessionSummary[];
 }) {
   const [instruction, setInstruction] = useState("");
+  const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [consensusThreshold, setConsensusThreshold] = useState(
@@ -122,8 +123,8 @@ export function DebateApp({
   }, [activeSession, files]);
 
   const selectedAgents = activeSession?.input.agents ?? agents;
+  const selectedTitle = activeSession?.input.title || title;
   const selectedGoal = activeSession?.input.goal || goal;
-  const selectedInstruction = activeSession?.input.instruction || instruction;
   const selectedThreshold =
     activeSession?.input.consensusThreshold ?? consensusThreshold;
   const selectedMaxRounds = activeSession?.input.maxRounds ?? maxRounds;
@@ -142,6 +143,7 @@ export function DebateApp({
   function resetDraft() {
     const fresh = createFreshDraft();
     setInstruction(fresh.instruction);
+    setTitle(fresh.title);
     setGoal(fresh.goal);
     setModel(fresh.model);
     setConsensusThreshold(fresh.consensusThreshold);
@@ -173,6 +175,7 @@ export function DebateApp({
         setActiveSession(data.session ?? null);
         setLatestSnapshot(data.session?.snapshots.at(-1) ?? null);
         setInstruction(data.session?.input.instruction ?? "");
+        setTitle(data.session?.input.title ?? "");
         setGoal(data.session?.input.goal ?? "");
         setAgents(data.session?.input.agents ?? createDefaultAgents());
         setModel(data.session?.input.model ?? DEFAULT_MODEL);
@@ -211,6 +214,7 @@ export function DebateApp({
       formData.append("files", file);
     });
     formData.append("instruction", instruction);
+    formData.append("title", title);
     formData.append("goal", goal);
     formData.append("consensusThreshold", String(consensusThreshold));
     formData.append("maxRounds", String(Math.min(Math.max(maxRounds || 10, 10), 50)));
@@ -235,6 +239,7 @@ export function DebateApp({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let currentSessionId = "";
 
       while (true) {
         const { value, done } = await reader.read();
@@ -254,7 +259,26 @@ export function DebateApp({
           const payload = JSON.parse(frame.slice(6)) as DebateStreamEvent;
 
           if (payload.type === "session.created") {
+            currentSessionId = payload.session.id;
             setActiveSession(payload.session);
+            setSessions((current) => {
+              const next = [
+                {
+                  id: payload.session.id,
+                  createdAt: payload.session.createdAt,
+                  updatedAt: payload.session.updatedAt,
+                  status: payload.session.status,
+                  title: payload.session.input.title,
+                  goal: payload.session.input.goal,
+                  instruction: payload.session.input.instruction,
+                  messageCount: 0,
+                  agreementScore: 0,
+                },
+                ...current.filter((session) => session.id !== payload.session.id),
+              ];
+
+              return next;
+            });
             setStatusMessage("세션 시작");
           }
 
@@ -322,10 +346,32 @@ export function DebateApp({
                   }
                 : current
             );
+            setSessions((current) =>
+              current.map((session) =>
+                session.id === currentSessionId
+                  ? {
+                      ...session,
+                      messageCount: session.messageCount + 1,
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : session
+              )
+            );
           }
 
           if (payload.type === "consensus.updated") {
             setLatestSnapshot(payload.snapshot);
+            setSessions((current) =>
+              current.map((session) =>
+                session.id === currentSessionId
+                  ? {
+                      ...session,
+                      agreementScore: payload.snapshot.agreementScore,
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : session
+              )
+            );
             setActiveSession((current) =>
               current
                 ? {
@@ -360,10 +406,10 @@ export function DebateApp({
 
   return (
     <>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(24,24,27,0.08),_transparent_28%),linear-gradient(180deg,#fcfcfd_0%,#f4f4f5_100%)]">
-        <div className="mx-auto flex min-h-screen w-full max-w-[1680px] gap-4 p-4 lg:p-6">
+      <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(24,24,27,0.08),_transparent_28%),linear-gradient(180deg,#fcfcfd_0%,#f4f4f5_100%)]">
+        <div className="mx-auto flex h-screen w-full max-w-[1680px] gap-4 p-4 lg:p-6">
           <aside className="hidden w-[320px] shrink-0 lg:block">
-            <div className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col rounded-[28px] border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="flex h-full flex-col rounded-[28px] bg-white p-4 shadow-sm">
               <div className="space-y-3">
                 <Badge variant="outline" className="w-fit">
                   GPT Debate Studio
@@ -387,12 +433,12 @@ export function DebateApp({
               <ScrollArea className="flex-1 pr-1">
                 <div className="space-y-2">
                   {isLoadingSession ? (
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
                       세션을 불러오는 중입니다…
                     </div>
                   ) : null}
                   {sessions.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
                       저장된 세션이 아직 없습니다.
                     </div>
                   ) : (
@@ -430,16 +476,7 @@ export function DebateApp({
                               : "text-zinc-950"
                           }`}
                         >
-                          {session.goal}
-                        </p>
-                        <p
-                          className={`mt-2 text-sm leading-6 ${
-                            activeSession?.id === session.id
-                              ? "text-zinc-300"
-                              : "text-zinc-500"
-                          }`}
-                        >
-                          {session.instruction}
+                          {session.title || session.goal}
                         </p>
                         <div
                           className={`mt-3 flex items-center justify-between text-xs ${
@@ -471,9 +508,9 @@ export function DebateApp({
               </Button>
             </div>
 
-            <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <Card className="min-h-[720px]">
-                <CardHeader className="border-b border-zinc-100 pb-4">
+            <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <Card className="flex min-h-0 flex-col overflow-hidden border-0 shadow-sm">
+                <CardHeader className="pb-4">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={isRunning ? "default" : "secondary"}>
@@ -493,17 +530,17 @@ export function DebateApp({
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <CardTitle className="text-xl leading-8">
-                          {selectedGoal || "새 세션을 시작해 토론 목표를 설정하세요."}
+                          {selectedTitle || "새 세션을 시작해 토론 제목을 설정하세요."}
                         </CardTitle>
                         <CardDescription className="mt-2 line-clamp-2 max-w-4xl">
-                          {selectedInstruction || "좌측 사이드바에서 새 세션을 시작하세요."}
+                          {selectedGoal || "좌측 사이드바에서 새 세션을 시작하세요."}
                         </CardDescription>
                       </div>
                       <Badge variant="outline">{displayMessages.length} messages</Badge>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="h-[640px] pt-5">
+                <CardContent className="min-h-0 flex-1 pt-0">
                   <ScrollArea className="h-full pr-2">
                     <div className="space-y-4">
                       {!displayMessages.length ? (
@@ -562,13 +599,54 @@ export function DebateApp({
                         })
                         
                       )}
+
+                      {activeSession?.finalReport ? (
+                        <div className="pt-2">
+                          <div className="rounded-[24px] bg-zinc-950 p-6 text-white">
+                            <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-400">
+                              Final Consensus
+                            </p>
+                            <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-white">
+                              {activeSession.finalReport.finalAnswer}
+                            </p>
+                            <div className="mt-5 grid gap-4 md:grid-cols-2">
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium text-zinc-200">Key Evidence</p>
+                                {activeSession.finalReport.keyEvidence.length ? (
+                                  <ul className="space-y-2 text-sm text-zinc-300">
+                                    {activeSession.finalReport.keyEvidence.map((item) => (
+                                      <li key={item}>• {item}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="text-sm text-zinc-400">정리된 증거가 아직 없습니다.</p>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium text-zinc-200">
+                                  Remaining Disputes
+                                </p>
+                                {activeSession.finalReport.remainingDisputes.length ? (
+                                  <ul className="space-y-2 text-sm text-zinc-300">
+                                    {activeSession.finalReport.remainingDisputes.map((item) => (
+                                      <li key={item}>• {item}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="text-sm text-zinc-400">남은 주요 이견이 없습니다.</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </ScrollArea>
                 </CardContent>
               </Card>
 
               <div className="space-y-4">
-                <Card>
+                <Card className="border-0 shadow-sm">
                   <CardHeader>
                     <CardTitle>Consensus</CardTitle>
                     <CardDescription>
@@ -576,7 +654,7 @@ export function DebateApp({
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="rounded-2xl bg-zinc-50 p-4">
                       <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
                         Goal
                       </p>
@@ -610,7 +688,7 @@ export function DebateApp({
                       </p>
                     </div>
                     {brief ? (
-                      <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                      <div className="rounded-2xl bg-zinc-50 p-4">
                         <p className="text-sm font-medium text-zinc-900">Debate Brief</p>
                         <ul className="mt-3 space-y-2 text-sm text-zinc-600">
                           {brief.successCriteria.map((criterion) => (
@@ -622,69 +700,8 @@ export function DebateApp({
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Final Consensus</CardTitle>
-                    <CardDescription>
-                      합의 도달 또는 최대 라운드 종료 후 결과가 고정됩니다.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {!activeSession?.finalReport ? (
-                      <EmptyState
-                        icon={Sparkles}
-                        title="최종 결과 대기 중"
-                        description="Moderator가 목표와 근거를 충분히 수렴하면 여기서 최종 합의안을 보여줍니다."
-                      />
-                    ) : (
-                      <>
-                        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                          <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-                            Recommendation
-                          </p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-900">
-                            {activeSession.finalReport.finalAnswer}
-                          </p>
-                        </div>
-                        <MiniMetric
-                          label="Agreement"
-                          value={activeSession.finalReport.agreementScore}
-                        />
-                        <MiniMetric
-                          label="Goal Fit"
-                          value={activeSession.finalReport.goalAlignmentScore}
-                        />
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-zinc-900">Key Evidence</p>
-                          {activeSession.finalReport.keyEvidence.length ? (
-                            <ul className="space-y-2 text-sm text-zinc-600">
-                              {activeSession.finalReport.keyEvidence.map((item) => (
-                                <li key={item}>• {item}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-sm text-zinc-500">정리된 증거가 아직 없습니다.</p>
-                          )}
-                        </div>
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-zinc-900">Remaining Disputes</p>
-                          {activeSession.finalReport.remainingDisputes.length ? (
-                            <ul className="space-y-2 text-sm text-zinc-600">
-                              {activeSession.finalReport.remainingDisputes.map((item) => (
-                                <li key={item}>• {item}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-sm text-zinc-500">남은 주요 이견이 없습니다.</p>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-
                 {errorMessage ? (
-                  <Card className="border-zinc-300 bg-zinc-100">
+                  <Card className="border-0 bg-zinc-100 shadow-sm">
                     <CardContent className="flex items-start gap-3 p-4">
                       <AlertCircle className="mt-0.5 h-4 w-4 text-zinc-700" />
                       <div className="space-y-1">
@@ -736,6 +753,14 @@ export function DebateApp({
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
+                        <Field label="Session Title">
+                          <Input
+                            value={title}
+                            onChange={(event) => setTitle(event.target.value)}
+                            placeholder="예: 3일 MVP 의사결정 토론"
+                            required
+                          />
+                        </Field>
                         <Field label="Instruction">
                           <Textarea
                             value={instruction}
@@ -930,7 +955,7 @@ function Field({
 
 function MiniMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+    <div className="rounded-2xl bg-zinc-50 p-4">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-medium text-zinc-700">{label}</span>
         <span className="text-sm text-zinc-900">{value}%</span>
