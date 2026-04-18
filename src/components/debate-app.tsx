@@ -1,7 +1,6 @@
 "use client";
 
 import { startTransition, useMemo, useState } from "react";
-import { nanoid } from "nanoid";
 import {
   AlertCircle,
   ChevronDown,
@@ -42,25 +41,6 @@ import {
   SessionSummary,
 } from "@/lib/types";
 import { formatTimestamp, truncate } from "@/lib/utils";
-
-const personaHints = [
-  "논리적이고 공격적",
-  "냉소적이고 허점 집착형",
-  "실무형, 실행 가능성 중시",
-  "학술적, 근거 엄격주의",
-];
-
-function createNewAgent(): AgentConfig {
-  return {
-    id: nanoid(),
-    name: "New agent",
-    role: "Specialist",
-    persona: "침착하지만 집요한 토론가",
-    tone: "담백하고 선명한 말투",
-    debateStyle: "문서 근거를 인용하며 한 가지 논점에 집중한다.",
-    objective: "새로운 관점에서 논의를 밀어붙인다.",
-  };
-}
 
 function createFreshDraft() {
   return {
@@ -146,14 +126,6 @@ export function DebateApp({
   function openNewSessionModal() {
     resetDraft();
     setIsComposerOpen(true);
-  }
-
-  function updateAgent(agentId: string, field: keyof AgentConfig, value: string) {
-    setAgents((current) =>
-      current.map((agent) =>
-        agent.id === agentId ? { ...agent, [field]: value } : agent
-      )
-    );
   }
 
   async function loadSession(id: string) {
@@ -456,7 +428,7 @@ export function DebateApp({
                       <MetaBlock
                         label="Agents"
                         value={selectedAgents
-                          .map((agent) => `${agent.name} · ${agent.role}`)
+                          .map((agent) => `${agent.role} · ${agent.persona}`)
                           .join("\n")}
                       />
                       <MetaBlock
@@ -678,7 +650,7 @@ export function DebateApp({
           onClick={() => setIsComposerOpen(false)}
         >
           <div
-            className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-[0_30px_80px_rgba(9,9,11,0.18)]"
+            className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-[0_30px_80px_rgba(9,9,11,0.18)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-6 py-5">
@@ -697,8 +669,8 @@ export function DebateApp({
             </div>
 
             <form onSubmit={handleSubmit}>
-              <div className="max-h-[calc(92vh-88px)] overflow-auto px-6 py-6">
-                <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
+                <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                   <div className="space-y-6">
                     <Card>
                       <CardHeader>
@@ -752,88 +724,38 @@ export function DebateApp({
 
                     <Card>
                       <CardHeader>
-                        <CardTitle>Agent Builder</CardTitle>
+                        <CardTitle>Agent Setup</CardTitle>
                         <CardDescription>
-                          역할, 성격, 말투가 실제 토론 프롬프트에 그대로 반영됩니다.
+                          아래 에이전트 구성이 그대로 적용됩니다.
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        <div className="flex flex-wrap gap-2">
-                          {personaHints.map((hint) => (
-                            <Badge key={hint} variant="secondary">
-                              {hint}
-                            </Badge>
-                          ))}
-                        </div>
                         {agents.map((agent, index) => (
                           <div
                             key={agent.id}
                             className={`rounded-2xl border p-4 ${agentTone(agent.role, index)}`}
                           >
-                            <div className="mb-3 flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-zinc-900">{agent.role}</p>
-                              </div>
-                              {agents.length > 2 ? (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    setAgents((current) =>
-                                      current.filter((item) => item.id !== agent.id)
-                                    )
-                                  }
-                                >
-                                  제거
-                                </Button>
-                              ) : null}
-                            </div>
-                            <div className="grid gap-3">
-                              <Textarea
-                                value={agent.persona}
-                                onChange={(event) =>
-                                  updateAgent(agent.id, "persona", event.target.value)
-                                }
-                                placeholder="성격"
-                                className="min-h-20"
-                              />
-                              <Input
-                                value={agent.tone || ""}
-                                onChange={(event) =>
-                                  updateAgent(agent.id, "tone", event.target.value)
-                                }
-                                placeholder="Tone"
-                              />
-                              <Textarea
-                                value={agent.debateStyle || ""}
-                                onChange={(event) =>
-                                  updateAgent(agent.id, "debateStyle", event.target.value)
-                                }
-                                placeholder="Debate style"
-                                className="min-h-20"
-                              />
-                              <Textarea
-                                value={agent.objective || ""}
-                                onChange={(event) =>
-                                  updateAgent(agent.id, "objective", event.target.value)
-                                }
-                                placeholder="Objective"
-                                className="min-h-20"
-                              />
+                            <p className="text-sm font-semibold text-zinc-900">{agent.role}</p>
+                            <div className="mt-3 space-y-2 text-sm leading-6 text-zinc-600">
+                              <p>
+                                <span className="font-medium text-zinc-800">Persona:</span>{" "}
+                                {agent.persona}
+                              </p>
+                              <p>
+                                <span className="font-medium text-zinc-800">Tone:</span>{" "}
+                                {agent.tone || "설정 없음"}
+                              </p>
+                              <p>
+                                <span className="font-medium text-zinc-800">Style:</span>{" "}
+                                {agent.debateStyle || "설정 없음"}
+                              </p>
+                              <p>
+                                <span className="font-medium text-zinc-800">Objective:</span>{" "}
+                                {agent.objective || "설정 없음"}
+                              </p>
                             </div>
                           </div>
                         ))}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() =>
-                            setAgents((current) => [...current, createNewAgent()])
-                          }
-                        >
-                          <Plus className="mr-2 h-4 w-4" />
-                          Agent 추가
-                        </Button>
                       </CardContent>
                     </Card>
                   </div>
@@ -858,20 +780,21 @@ export function DebateApp({
                             <option value="gpt-4.1">gpt-4.1</option>
                           </select>
                         </Field>
-                        <Field
-                          label={`Consensus Threshold · ${consensusThreshold}%`}
-                          helper="Moderator score와 goal alignment를 함께 봅니다."
-                        >
-                          <input
-                            type="range"
+                        <Field label="Consensus Threshold">
+                          <Input
+                            type="number"
                             min={60}
                             max={95}
-                            step={1}
                             value={consensusThreshold}
                             onChange={(event) =>
-                              setConsensusThreshold(Number(event.target.value))
+                              setConsensusThreshold(
+                                Math.min(
+                                  Math.max(Number(event.target.value) || 60, 60),
+                                  95
+                                )
+                              )
                             }
-                            className="w-full accent-zinc-900"
+                            className="w-full"
                           />
                         </Field>
                         <Field
