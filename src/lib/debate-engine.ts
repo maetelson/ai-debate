@@ -7,7 +7,13 @@ import {
 } from "@/lib/defaults";
 import { parseUploadedFile } from "@/lib/document-parser";
 import { createOpenAIClient } from "@/lib/openai";
-import { saveSession } from "@/lib/persistence";
+import {
+  saveSessionCompleted,
+  saveSessionFailed,
+  saveSessionMessage,
+  saveSessionSnapshot,
+  saveSessionStarted,
+} from "@/lib/storage/app-storage";
 import {
   AgentConfig,
   ConsensusSnapshot,
@@ -394,146 +400,157 @@ export async function runDebate({ input, files, onEvent }: RunDebateArgs) {
     throw new Error("goal required");
   }
 
-  const documents = await Promise.all(files.map((file) => parseUploadedFile(file)));
-  const brief = buildDebateBrief(input, documents);
   const session: DebateSession = {
     id: nanoid(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     status: "running",
-      input: {
-        title: input.title,
-        instruction: input.instruction,
-        goal: input.goal,
-        consensusThreshold: clamp(input.consensusThreshold || DEFAULT_CONSENSUS_THRESHOLD, 50, 95),
-        maxRounds: clamp(input.maxRounds || DEFAULT_MAX_ROUNDS, 10, 50),
-        model: input.model,
-        agents: input.agents,
-      },
-    documents,
+    input: {
+      title: input.title,
+      instruction: input.instruction,
+      goal: input.goal,
+      consensusThreshold: clamp(input.consensusThreshold || DEFAULT_CONSENSUS_THRESHOLD, 50, 95),
+      maxRounds: clamp(input.maxRounds || DEFAULT_MAX_ROUNDS, 10, 50),
+      model: input.model,
+      agents: input.agents,
+    },
+    documents: [],
     messages: [],
     snapshots: [],
   };
 
-  await saveSession(session);
-  await onEvent({ type: "session.created", session });
-  await onEvent({ type: "document.parsed", documents });
-  await onEvent({ type: "brief.generated", brief });
+  try {
+    const documents = await Promise.all(files.map((file) => parseUploadedFile(file)));
+    const brief = buildDebateBrief(input, documents);
+    session.documents = documents;
 
-  const { debaters, moderator } = normalizeAgents(input.agents);
-  if (!moderator || debaters.length === 0) {
-    throw new Error("At least two agents are required, including one moderator.");
-  }
+    await saveSessionStarted(session);
+    await onEvent({ type: "session.created", session });
+    await onEvent({ type: "document.parsed", documents });
+    await onEvent({ type: "brief.generated", brief });
 
-  let finishReason: FinalReport["finishReason"] | null = null;
+    const { debaters, moderator } = normalizeAgents(input.agents);
+    if (!moderator || debaters.length === 0) {
+      throw new Error("At least two agents are required, including one moderator.");
+    }
 
-  for (let round = 1; round <= session.input.maxRounds; round += 1) {
-    const phase = getRoundPhase(round);
-    await onEvent({ type: "round.started", round, phase });
+    let finishReason: FinalReport["finishReason"] | null = null;
 
-    for (const agent of debaters) {
-      const prompt = buildAgentPrompt({
-        agent,
-        brief,
-        documents,
-        messages: session.messages,
+    for (let round = 1; round <= session.input.maxRounds; round += 1) {
+      const phase = getRoundPhase(round);
+      await onEvent({ type: "round.started", round, phase });
+
+      for (const agent of debaters) {
+        const prompt = buildAgentPrompt({
+          agent,
+          brief,
+          documents,
+          messages: session.messages,
+          round,
+          phase,
+        });
+        const content = await streamFreeformTurn({
+          apiKey: input.apiKey,
+          model: input.model,
+          prompt,
+          agent,
+          round,
+          onStart: (message) => onEvent({ type: "message.started", message }),
+          onDelta: (messageId, delta) => onEvent({ type: "message.delta", messageId, delta }),
+        });
+        const message = createMessage(agent, round, content);
+        session.messages.push(message);
+        session.updatedAt = new Date().toISOString();
+        await saveSessionMessage(session, message);
+        await onEvent({ type: "message.completed", message });
+      }
+
+      const moderatorStreamingMessage: StreamingMessage = {
+        id: nanoid(),
+        agentId: moderator.id,
+        agentName: moderator.name,
+        role: moderator.role,
         round,
-        phase,
-      });
-      const content = await streamFreeformTurn({
+        content: "",
+        createdAt: new Date().toISOString(),
+        status: "thinking",
+      };
+      await onEvent({ type: "message.started", message: moderatorStreamingMessage });
+
+      const moderatorContent = await generateModeratorAssessment({
         apiKey: input.apiKey,
         model: input.model,
-        prompt,
-        agent,
-        round,
-        onStart: (message) => onEvent({ type: "message.started", message }),
-        onDelta: (messageId, delta) => onEvent({ type: "message.delta", messageId, delta }),
+        prompt: buildModeratorPrompt({
+          moderator,
+          brief,
+          documents,
+          messages: session.messages,
+          round,
+        }),
       });
-      const message = createMessage(agent, round, content);
-      session.messages.push(message);
+
+      const moderatorMessage = createMessage(
+        moderator,
+        round,
+        `${moderatorContent.current_position}\n\nReasoning: ${moderatorContent.rationale}`
+      );
+      const snapshot: ConsensusSnapshot = {
+        round,
+        agreementScore: clamp(Math.round(moderatorContent.agreement_score), 0, 100),
+        goalAlignmentScore: clamp(Math.round(moderatorContent.goal_alignment_score), 0, 100),
+        evidenceStrengthScore: clamp(Math.round(moderatorContent.evidence_strength_score), 0, 100),
+        currentPosition: moderatorContent.current_position,
+        openDisputes: moderatorContent.open_disputes,
+        rationale: moderatorContent.rationale,
+        shouldContinue: moderatorContent.should_continue,
+      };
+
+      session.messages.push(moderatorMessage);
+      session.snapshots.push(snapshot);
       session.updatedAt = new Date().toISOString();
-      await saveSession(session);
-      await onEvent({ type: "message.completed", message });
+
+      await saveSessionMessage(session, moderatorMessage);
+      await saveSessionSnapshot(session, snapshot);
+      await onEvent({ type: "message.completed", message: moderatorMessage });
+      await onEvent({ type: "consensus.updated", snapshot });
+
+      finishReason = shouldStopDebate(
+        snapshot,
+        round,
+        session.input.maxRounds,
+        session.input.consensusThreshold
+      );
+
+      if (finishReason || !snapshot.shouldContinue) {
+        finishReason = finishReason ?? "max_rounds_reached";
+        break;
+      }
     }
 
-    const moderatorStreamingMessage: StreamingMessage = {
-      id: nanoid(),
-      agentId: moderator.id,
-      agentName: moderator.name,
-      role: moderator.role,
-      round,
-      content: "",
-      createdAt: new Date().toISOString(),
-      status: "thinking",
-    };
-    await onEvent({ type: "message.started", message: moderatorStreamingMessage });
+    const latestSnapshot = session.snapshots.at(-1);
+    if (!latestSnapshot) {
+      throw new Error("The debate ended before the moderator produced an assessment.");
+    }
 
-    const moderatorContent = await generateModeratorAssessment({
+    session.finalReport = await generateFinalReport({
       apiKey: input.apiKey,
       model: input.model,
-      prompt: buildModeratorPrompt({
-        moderator,
-        brief,
-        documents,
-        messages: session.messages,
-        round,
-      }),
+      brief,
+      messages: session.messages,
+      snapshot: latestSnapshot,
+      finishReason: finishReason ?? "max_rounds_reached",
     });
-
-    const moderatorMessage = createMessage(
-      moderator,
-      round,
-      `${moderatorContent.current_position}\n\nReasoning: ${moderatorContent.rationale}`
-    );
-    const snapshot: ConsensusSnapshot = {
-      round,
-      agreementScore: clamp(Math.round(moderatorContent.agreement_score), 0, 100),
-      goalAlignmentScore: clamp(Math.round(moderatorContent.goal_alignment_score), 0, 100),
-      evidenceStrengthScore: clamp(Math.round(moderatorContent.evidence_strength_score), 0, 100),
-      currentPosition: moderatorContent.current_position,
-      openDisputes: moderatorContent.open_disputes,
-      rationale: moderatorContent.rationale,
-      shouldContinue: moderatorContent.should_continue,
-    };
-
-    session.messages.push(moderatorMessage);
-    session.snapshots.push(snapshot);
+    session.status = "completed";
     session.updatedAt = new Date().toISOString();
+    await saveSessionCompleted(session);
+    await onEvent({ type: "debate.completed", session });
 
-    await saveSession(session);
-    await onEvent({ type: "message.completed", message: moderatorMessage });
-    await onEvent({ type: "consensus.updated", snapshot });
-
-    finishReason = shouldStopDebate(
-      snapshot,
-      round,
-      session.input.maxRounds,
-      session.input.consensusThreshold
-    );
-
-    if (finishReason || !snapshot.shouldContinue) {
-      finishReason = finishReason ?? "max_rounds_reached";
-      break;
-    }
+    return session;
+  } catch (error) {
+    session.status = "failed";
+    session.error = error instanceof Error ? error.message : "Unknown debate error.";
+    session.updatedAt = new Date().toISOString();
+    await saveSessionFailed(session, session.error);
+    throw error;
   }
-
-  const latestSnapshot = session.snapshots.at(-1);
-  if (!latestSnapshot) {
-    throw new Error("The debate ended before the moderator produced an assessment.");
-  }
-
-  session.finalReport = await generateFinalReport({
-    apiKey: input.apiKey,
-    model: input.model,
-    brief,
-    messages: session.messages,
-    snapshot: latestSnapshot,
-    finishReason: finishReason ?? "max_rounds_reached",
-  });
-  session.status = "completed";
-  session.updatedAt = new Date().toISOString();
-  await saveSession(session);
-  await onEvent({ type: "debate.completed", session });
-
-  return session;
 }

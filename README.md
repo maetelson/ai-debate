@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GPT Debate Studio
 
-## Getting Started
+문서를 업로드하고 여러 에이전트가 토론하는 `Next.js` 앱입니다.
 
-First, run the development server:
+## Local App
 
-```bash
+```powershell
+cd C:\Users\hands\OneDrive\Desktop\fight
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+프로덕션처럼 로컬 실행:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```powershell
+cd C:\Users\hands\OneDrive\Desktop\fight
+npm install
+npm run build
+npm run start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+로컬 실행 시 세션 JSON 저장 위치:
 
-## Learn More
+`C:\Users\hands\OneDrive\Desktop\fight\.data\sessions`
 
-To learn more about Next.js, take a look at the following resources:
+## Local Bridge + SQLite
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Vercel 배포본에서 로컬 DB에 저장하려면 내 PC에서 브리지를 실행해야 합니다.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+브리지 실행:
 
-## Deploy on Vercel
+```powershell
+cd C:\Users\hands\OneDrive\Desktop\fight
+$env:LOCAL_BRIDGE_TOKEN="your-secret-token"
+npm run bridge
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+브리지 기본 포트:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`8787`
+
+SQLite 기본 경로:
+
+`C:\Users\hands\OneDrive\Desktop\fight\.bridge-data\debate-bridge.sqlite`
+
+브리지를 외부에서 접근 가능하게 하려면 `Cloudflare Tunnel` 또는 `ngrok`로 `localhost:8787`을 HTTPS URL로 노출하세요.
+
+Vercel 환경변수:
+
+- `LOCAL_BRIDGE_URL`
+- `LOCAL_BRIDGE_TOKEN`
+
+자세한 브리지 설정은 [bridge/README.md](bridge/README.md)를 참고하세요.

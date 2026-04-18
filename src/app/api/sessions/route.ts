@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { listSessions } from "@/lib/persistence";
+import { listStoredSessions } from "@/lib/storage/app-storage";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const sessions = await listSessions();
+  const sessions = await listStoredSessions();
   return NextResponse.json({ sessions });
 }
