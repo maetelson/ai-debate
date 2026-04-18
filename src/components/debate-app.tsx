@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,7 +66,10 @@ function messageLayout(role: string) {
   if (/moderator|judge|arbiter/i.test(role)) {
     return {
       wrapper: "flex justify-center",
-      bubble: "w-full max-w-3xl border-zinc-300 bg-zinc-50",
+      bubble: "w-full max-w-3xl border-zinc-200 bg-zinc-100",
+      title: "text-zinc-950",
+      meta: "text-zinc-500",
+      body: "text-zinc-800",
     };
   }
 
@@ -75,12 +77,18 @@ function messageLayout(role: string) {
     return {
       wrapper: "flex justify-start",
       bubble: "max-w-3xl border-zinc-200 bg-white",
+      title: "text-zinc-950",
+      meta: "text-zinc-500",
+      body: "text-zinc-800",
     };
   }
 
   return {
     wrapper: "flex justify-end",
-    bubble: "max-w-3xl border-zinc-950 bg-zinc-950 text-white",
+    bubble: "max-w-3xl border-zinc-300 bg-zinc-200",
+    title: "text-zinc-950",
+    meta: "text-zinc-500",
+    body: "text-zinc-900",
   };
 }
 
@@ -448,7 +456,7 @@ export function DebateApp({
                         type="button"
                         className={`w-full rounded-2xl border p-4 text-left transition ${
                           activeSession?.id === session.id
-                            ? "border-zinc-950 bg-zinc-950 text-white"
+                            ? "border-zinc-300 bg-white shadow-sm"
                             : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"
                         }`}
                         onClick={() => void loadSession(session.id)}
@@ -462,7 +470,7 @@ export function DebateApp({
                           <span
                             className={`text-xs ${
                               activeSession?.id === session.id
-                                ? "text-zinc-300"
+                                ? "text-zinc-500"
                                 : "text-zinc-500"
                             }`}
                           >
@@ -472,7 +480,7 @@ export function DebateApp({
                         <p
                           className={`text-sm font-medium leading-6 ${
                             activeSession?.id === session.id
-                              ? "text-white"
+                              ? "text-zinc-950"
                               : "text-zinc-950"
                           }`}
                         >
@@ -481,7 +489,7 @@ export function DebateApp({
                         <div
                           className={`mt-3 flex items-center justify-between text-xs ${
                             activeSession?.id === session.id
-                              ? "text-zinc-300"
+                              ? "text-zinc-500"
                               : "text-zinc-500"
                           }`}
                         >
@@ -565,32 +573,14 @@ export function DebateApp({
                             <div key={message.id} className={layout.wrapper}>
                               <div className={`w-full rounded-2xl border p-4 ${layout.bubble}`}>
                                 <div className="mb-2 flex items-center justify-between gap-3">
-                                  <p
-                                    className={`text-sm font-semibold ${
-                                      /bg-zinc-950/.test(layout.bubble)
-                                        ? "text-white"
-                                        : "text-zinc-950"
-                                    }`}
-                                  >
+                                  <p className={`text-sm font-semibold ${layout.title}`}>
                                     {message.agentName}
                                   </p>
-                                  <span
-                                    className={`text-xs ${
-                                      /bg-zinc-950/.test(layout.bubble)
-                                        ? "text-zinc-300"
-                                        : "text-zinc-500"
-                                    }`}
-                                  >
+                                  <span className={`text-xs ${layout.meta}`}>
                                     {formatTimestamp(message.createdAt)}
                                   </span>
                                 </div>
-                                <p
-                                  className={`whitespace-pre-wrap text-sm leading-6 ${
-                                    /bg-zinc-950/.test(layout.bubble)
-                                      ? "text-zinc-100"
-                                      : "text-zinc-800"
-                                  }`}
-                                >
+                                <p className={`whitespace-pre-wrap text-sm leading-6 ${layout.body}`}>
                                   {visibleContent || (isStreaming ? "thinking..." : "")}
                                 </p>
                               </div>
@@ -645,58 +635,47 @@ export function DebateApp({
                 </CardContent>
               </Card>
 
-              <div className="space-y-4">
-                <Card className="border-0 shadow-sm">
+              <div className="min-h-0">
+                <Card className="flex h-full min-h-0 flex-col border-0 shadow-sm">
                   <CardHeader>
                     <CardTitle>Consensus</CardTitle>
                     <CardDescription>
                       목표 기준 합의율과 아직 남은 핵심 이견을 표시합니다.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="rounded-2xl bg-zinc-50 p-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-                        Goal
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-zinc-800">
-                        {selectedGoal || "아직 설정되지 않았습니다."}
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-zinc-700">Agreement Score</span>
-                        <span className="text-zinc-900">
-                          {latestSnapshot?.agreementScore ?? 0}%
-                        </span>
+                  <CardContent className="min-h-0 flex-1 overflow-y-auto">
+                    <div className="flex h-full flex-col gap-4">
+                      <MetricRow
+                        label="Agreement Score"
+                        value={`${latestSnapshot?.agreementScore ?? 0}%`}
+                      />
+                      <MetricRow
+                        label="Goal Alignment"
+                        value={`${latestSnapshot?.goalAlignmentScore ?? 0}%`}
+                      />
+                      <MetricRow
+                        label="Evidence Strength"
+                        value={`${latestSnapshot?.evidenceStrengthScore ?? 0}%`}
+                      />
+                      <Separator />
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-zinc-800">현재 남은 쟁점</p>
+                        <p className="text-sm leading-6 text-zinc-600">
+                          {latestSnapshot?.openDisputes[0] ||
+                            "토론이 시작되면 남은 쟁점이 이곳에 표시됩니다."}
+                        </p>
                       </div>
-                      <Progress value={latestSnapshot?.agreementScore ?? 0} />
+                      {brief ? (
+                        <div className="rounded-2xl bg-zinc-50 p-4">
+                          <p className="text-sm font-medium text-zinc-900">Debate Brief</p>
+                          <ul className="mt-3 space-y-2 text-sm text-zinc-600">
+                            {brief.successCriteria.map((criterion) => (
+                              <li key={criterion}>• {criterion}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </div>
-                    <MiniMetric
-                      label="Goal Alignment"
-                      value={latestSnapshot?.goalAlignmentScore ?? 0}
-                    />
-                    <MiniMetric
-                      label="Evidence Strength"
-                      value={latestSnapshot?.evidenceStrengthScore ?? 0}
-                    />
-                    <Separator />
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-zinc-800">현재 남은 쟁점</p>
-                      <p className="text-sm leading-6 text-zinc-600">
-                        {latestSnapshot?.openDisputes[0] ||
-                          "토론이 시작되면 남은 쟁점이 이곳에 표시됩니다."}
-                      </p>
-                    </div>
-                    {brief ? (
-                      <div className="rounded-2xl bg-zinc-50 p-4">
-                        <p className="text-sm font-medium text-zinc-900">Debate Brief</p>
-                        <ul className="mt-3 space-y-2 text-sm text-zinc-600">
-                          {brief.successCriteria.map((criterion) => (
-                            <li key={criterion}>• {criterion}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
 
@@ -953,14 +932,13 @@ function Field({
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: number }) {
+function MetricRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-zinc-50 p-4">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-zinc-700">{label}</span>
-        <span className="text-sm text-zinc-900">{value}%</span>
+        <span className="text-sm text-zinc-900">{value}</span>
       </div>
-      <Progress value={value} />
     </div>
   );
 }
