@@ -65,6 +65,8 @@ describe("debate engine helpers", () => {
 
     expect(instruction).toContain('주어진 아이디어에 대해 "지금 당장 만들 MVP"를 뽑는 것이 아니라');
     expect(instruction).toContain("핵심 가설 표");
+    expect(instruction).toContain("|---|---|---|---|");
+    expect(instruction).toContain("|---|---|---|---|---|---|");
     expect(instruction).toContain("be/fe 2명이 2주 안에 검증할 실험을 정하라.");
   });
 

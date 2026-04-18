@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   createDefaultAgents,
   DEFAULT_CONSENSUS_THRESHOLD,
@@ -95,6 +97,44 @@ function messageLayout(role: string) {
 
 function sanitizeDisplayContent(content: string) {
   return content.replace(/\s*\[[^\]]+\]/g, "").trim();
+}
+
+function MarkdownBlock({
+  content,
+  className = "",
+}: {
+  content: string;
+  className?: string;
+}) {
+  return (
+    <div className={`min-w-0 overflow-hidden ${className}`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="whitespace-pre-wrap text-sm leading-6">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc space-y-2 pl-5 text-sm leading-6">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal space-y-2 pl-5 text-sm leading-6">{children}</ol>,
+          li: ({ children }) => <li>{children}</li>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          table: ({ children }) => (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-white/10 bg-black/10">
+              <table className="w-full border-collapse text-left text-sm">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="bg-black/10">{children}</thead>,
+          th: ({ children }) => (
+            <th className="border-b border-white/10 px-3 py-2 font-medium">{children}</th>
+          ),
+          td: ({ children }) => <td className="border-t border-white/10 px-3 py-2 align-top">{children}</td>,
+          code: ({ children }) => (
+            <code className="rounded bg-black/10 px-1.5 py-0.5 text-[0.9em]">{children}</code>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 export function DebateApp({
@@ -721,11 +761,10 @@ export function DebateApp({
                                   </span>
                                 </div>
                                 {visibleContent ? (
-                                  <p
-                                    className={`whitespace-pre-wrap text-sm leading-6 ${layout.body}`}
-                                  >
-                                    {visibleContent}
-                                  </p>
+                                  <MarkdownBlock
+                                    content={visibleContent}
+                                    className={layout.body}
+                                  />
                                 ) : isStreaming ? (
                                   <ThinkingDots />
                                 ) : null}
@@ -742,9 +781,12 @@ export function DebateApp({
                             <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-400">
                               Final Consensus
                             </p>
-                            <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-white">
-                              {activeSession.finalReport.finalAnswer}
-                            </p>
+                            <div className="mt-4 text-base leading-7 text-white">
+                              <MarkdownBlock
+                                content={activeSession.finalReport.finalAnswer}
+                                className="text-white"
+                              />
+                            </div>
                             <div className="mt-5 grid gap-4 md:grid-cols-2">
                               <div className="space-y-2">
                                 <p className="text-sm font-medium text-zinc-200">Key Evidence</p>
