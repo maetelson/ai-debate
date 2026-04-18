@@ -228,22 +228,21 @@ async function streamFreeformTurn(args: {
   };
 
   await args.onStart(streamingMessage);
-
-  const stream = client.responses.stream({
+  const stream = await client.chat.completions.create({
     model: args.model,
-    input: args.prompt,
+    stream: true,
+    messages: [{ role: "user", content: args.prompt }],
   });
 
   let content = "";
 
   for await (const event of stream) {
-    if (event.type === "response.output_text.delta" && event.delta) {
-      content += event.delta;
-      await args.onDelta(streamingMessage.id, event.delta);
+    const delta = event.choices[0]?.delta?.content;
+    if (delta) {
+      content += delta;
+      await args.onDelta(streamingMessage.id, delta);
     }
   }
-
-  await stream.finalResponse();
   return content.trim();
 }
 

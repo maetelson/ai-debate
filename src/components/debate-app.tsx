@@ -580,9 +580,15 @@ export function DebateApp({
                                     {formatTimestamp(message.createdAt)}
                                   </span>
                                 </div>
-                                <p className={`whitespace-pre-wrap text-sm leading-6 ${layout.body}`}>
-                                  {visibleContent || (isStreaming ? "thinking..." : "")}
-                                </p>
+                                {visibleContent ? (
+                                  <p
+                                    className={`whitespace-pre-wrap text-sm leading-6 ${layout.body}`}
+                                  >
+                                    {visibleContent}
+                                  </p>
+                                ) : isStreaming ? (
+                                  <ThinkingDots />
+                                ) : null}
                               </div>
                             </div>
                           );
@@ -940,6 +946,19 @@ function MetricRow({ label, value }: { label: string; value: string }) {
         <span className="text-sm text-zinc-900">{value}</span>
       </div>
     </div>
+  );
+}
+
+function ThinkingDots({ className = "" }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 ${className}`}>
+      <span className="text-sm text-zinc-500">thinking</span>
+      <span className="inline-flex items-center gap-1">
+        <span className="h-1.5 w-1.5 animate-[pulse_1s_ease-in-out_infinite] rounded-full bg-zinc-400 [animation-delay:0ms]" />
+        <span className="h-1.5 w-1.5 animate-[pulse_1s_ease-in-out_infinite] rounded-full bg-zinc-400 [animation-delay:150ms]" />
+        <span className="h-1.5 w-1.5 animate-[pulse_1s_ease-in-out_infinite] rounded-full bg-zinc-400 [animation-delay:300ms]" />
+      </span>
+    </span>
   );
 }
 
