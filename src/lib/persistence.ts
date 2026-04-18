@@ -4,7 +4,8 @@ import path from "node:path";
 import { DebateSession, SessionSummary } from "@/lib/types";
 import { truncate } from "@/lib/utils";
 
-const DATA_DIR = path.join(process.cwd(), ".data", "sessions");
+const DATA_ROOT = process.env.VERCEL ? "/tmp" : process.cwd();
+const DATA_DIR = path.join(DATA_ROOT, ".data", "sessions");
 
 async function ensureDataDir() {
   await mkdir(DATA_DIR, { recursive: true });
