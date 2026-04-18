@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { convert as htmlToText } from "html-to-text";
@@ -11,6 +12,14 @@ import { truncate } from "@/lib/utils";
 const CHUNK_SIZE = 1200;
 const CHUNK_OVERLAP = 200;
 const require = createRequire(import.meta.url);
+const PDF_WORKER_PATH = path.join(
+  process.cwd(),
+  "node_modules",
+  "pdfjs-dist",
+  "legacy",
+  "build",
+  "pdf.worker.mjs"
+);
 
 export function chunkText(documentId: string, input: string): DocumentChunk[] {
   const text = input.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
@@ -68,9 +77,7 @@ async function extractTextFromPdf(buffer: Buffer) {
   }
 
   const { PDFParse } = await import("pdf-parse");
-  PDFParse.setWorker(
-    pathToFileURL(require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")).href
-  );
+  PDFParse.setWorker(pathToFileURL(PDF_WORKER_PATH).href);
   const parser = new PDFParse({ data: buffer });
   try {
     const parsed = await parser.getText();
