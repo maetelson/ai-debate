@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   LoaderCircle,
@@ -32,6 +32,13 @@ import {
   DEFAULT_MODEL,
 } from "@/lib/defaults";
 import {
+  deleteCachedSession,
+  readCachedSession,
+  readCachedSessionSummaries,
+  writeCachedSession,
+  writeCachedSessionSummaries,
+} from "@/lib/session-cache";
+import {
   AgentConfig,
   ConsensusSnapshot,
   DebateBrief,
@@ -41,6 +48,24 @@ import {
   StreamingMessage,
 } from "@/lib/types";
 import { formatTimestamp } from "@/lib/utils";
+
+function mergeSessionSummaries(
+  primary: SessionSummary[],
+  secondary: SessionSummary[]
+) {
+  const merged = new Map<string, SessionSummary>();
+
+  for (const session of [...primary, ...secondary]) {
+    const existing = merged.get(session.id);
+    if (!existing || +new Date(session.updatedAt) >= +new Date(existing.updatedAt)) {
+      merged.set(session.id, session);
+    }
+  }
+
+  return Array.from(merged.values()).sort(
+    (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)
+  );
+}
 
 function createFreshDraft() {
   return {
@@ -152,7 +177,9 @@ export function DebateApp({
   const [maxRounds, setMaxRounds] = useState(DEFAULT_MAX_ROUNDS);
   const [agents, setAgents] = useState<AgentConfig[]>(createDefaultAgents);
   const [files, setFiles] = useState<File[]>([]);
-  const [sessions, setSessions] = useState<SessionSummary[]>(initialSessions);
+  const [sessions, setSessions] = useState<SessionSummary[]>(() =>
+    mergeSessionSummaries(initialSessions, readCachedSessionSummaries())
+  );
   const [activeSession, setActiveSession] = useState<DebateSession | null>(null);
   const [brief, setBrief] = useState<DebateBrief | null>(null);
   const [latestSnapshot, setLatestSnapshot] = useState<ConsensusSnapshot | null>(null);
@@ -187,10 +214,22 @@ export function DebateApp({
     [activeSession?.messages, streamingMessages]
   );
 
+  useEffect(() => {
+    writeCachedSessionSummaries(sessions);
+  }, [sessions]);
+
+  useEffect(() => {
+    if (!activeSession) {
+      return;
+    }
+
+    writeCachedSession(activeSession);
+  }, [activeSession]);
+
   async function loadSessions() {
     const response = await fetch("/api/sessions");
     const data = (await response.json()) as { sessions: SessionSummary[] };
-    setSessions(data.sessions);
+    setSessions((current) => mergeSessionSummaries(data.sessions, current));
   }
 
   function startSessionRename(session: SessionSummary) {
@@ -268,6 +307,7 @@ export function DebateApp({
       }
 
       setSessions((current) => current.filter((session) => session.id !== id));
+      deleteCachedSession(id);
       if (activeSession?.id === id) {
         setActiveSession(null);
         setLatestSnapshot(null);
@@ -319,27 +359,29 @@ export function DebateApp({
     try {
       const response = await fetch(`/api/sessions/${id}`);
       const data = (await response.json()) as { session?: DebateSession; error?: string };
-      if (!response.ok || !data.session) {
+      const resolvedSession =
+        response.ok && data.session ? data.session : readCachedSession(id);
+      if (!resolvedSession) {
         throw new Error(data.error || "Session load failed.");
       }
 
       startTransition(() => {
-        setActiveSession(data.session ?? null);
-        setLatestSnapshot(data.session?.snapshots.at(-1) ?? null);
-        setInstruction(data.session?.input.instruction ?? "");
-        setTitle(data.session?.input.title ?? "");
-        setGoal(data.session?.input.goal ?? "");
-        setAgents(data.session?.input.agents ?? createDefaultAgents());
-        setModel(data.session?.input.model ?? DEFAULT_MODEL);
+        setActiveSession(resolvedSession);
+        setLatestSnapshot(resolvedSession.snapshots.at(-1) ?? null);
+        setInstruction(resolvedSession.input.instruction ?? "");
+        setTitle(resolvedSession.input.title ?? "");
+        setGoal(resolvedSession.input.goal ?? "");
+        setAgents(resolvedSession.input.agents ?? createDefaultAgents());
+        setModel(resolvedSession.input.model ?? DEFAULT_MODEL);
         setConsensusThreshold(
-          data.session?.input.consensusThreshold ?? DEFAULT_CONSENSUS_THRESHOLD
+          resolvedSession.input.consensusThreshold ?? DEFAULT_CONSENSUS_THRESHOLD
         );
-        setMaxRounds(data.session?.input.maxRounds ?? DEFAULT_MAX_ROUNDS);
+        setMaxRounds(resolvedSession.input.maxRounds ?? DEFAULT_MAX_ROUNDS);
         setFiles([]);
         setBrief(null);
         setStreamingMessages([]);
         setStatusMessage(
-          data.session?.status === "completed" ? "저장된 세션 불러옴" : "세션 확인 중"
+          resolvedSession.status === "completed" ? "저장된 세션 불러옴" : "세션 확인 중"
         );
       });
     } catch (error) {
