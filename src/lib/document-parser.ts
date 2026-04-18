@@ -1,7 +1,6 @@
 import { convert as htmlToText } from "html-to-text";
 import mammoth from "mammoth";
 import { nanoid } from "nanoid";
-import { PDFParse } from "pdf-parse";
 
 import { DocumentChunk, ParsedDocument } from "@/lib/types";
 import { truncate } from "@/lib/utils";
@@ -55,6 +54,7 @@ export function extractTextFromHtml(html: string) {
 }
 
 async function extractTextFromPdf(buffer: Buffer) {
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   try {
     const parsed = await parser.getText();
