@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 import { convert as htmlToText } from "html-to-text";
 import mammoth from "mammoth";
@@ -67,6 +68,9 @@ async function extractTextFromPdf(buffer: Buffer) {
   }
 
   const { PDFParse } = await import("pdf-parse");
+  PDFParse.setWorker(
+    pathToFileURL(require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")).href
+  );
   const parser = new PDFParse({ data: buffer });
   try {
     const parsed = await parser.getText();
