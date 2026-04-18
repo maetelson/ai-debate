@@ -62,6 +62,27 @@ function agentTone(role: string, index: number) {
     : "border-zinc-300 bg-zinc-50";
 }
 
+function messageLayout(role: string) {
+  if (/moderator|judge|arbiter/i.test(role)) {
+    return {
+      wrapper: "flex justify-center",
+      bubble: "w-full max-w-3xl border-zinc-300 bg-zinc-50",
+    };
+  }
+
+  if (/critic|challenger/i.test(role)) {
+    return {
+      wrapper: "flex justify-start",
+      bubble: "max-w-3xl border-zinc-200 bg-white",
+    };
+  }
+
+  return {
+    wrapper: "flex justify-end",
+    bubble: "max-w-3xl border-zinc-950 bg-zinc-950 text-white",
+  };
+}
+
 export function DebateApp({
   initialSessions,
 }: {
@@ -453,39 +474,46 @@ export function DebateApp({
                           }
                         />
                       ) : (
-                        activeSession.messages.map((message, index) => (
-                          <div
-                            key={message.id}
-                            className={`rounded-2xl border p-4 ${agentTone(
-                              message.role,
-                              index
-                            )}`}
-                          >
-                            <div className="mb-2 flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-semibold text-zinc-950">
-                                {message.agentName}
-                              </p>
-                              <Badge variant="secondary">{message.role}</Badge>
-                              <Badge variant="outline">Round {message.round}</Badge>
-                              <Badge variant="outline">{message.personaSummary}</Badge>
-                              <span className="text-xs text-zinc-500">
-                                {formatTimestamp(message.createdAt)}
-                              </span>
-                            </div>
-                            <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-800">
-                              {message.content}
-                            </p>
-                            {message.references.length ? (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {message.references.map((reference) => (
-                                  <Badge key={reference} variant="outline">
-                                    {reference}
-                                  </Badge>
-                                ))}
+                        activeSession.messages.map((message) => {
+                          const layout = messageLayout(message.role);
+
+                          return (
+                            <div key={message.id} className={layout.wrapper}>
+                              <div className={`w-full rounded-2xl border p-4 ${layout.bubble}`}>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <p
+                                    className={`text-sm font-semibold ${
+                                      /bg-zinc-950/.test(layout.bubble)
+                                        ? "text-white"
+                                        : "text-zinc-950"
+                                    }`}
+                                  >
+                                    {message.agentName}
+                                  </p>
+                                  <span
+                                    className={`text-xs ${
+                                      /bg-zinc-950/.test(layout.bubble)
+                                        ? "text-zinc-300"
+                                        : "text-zinc-500"
+                                    }`}
+                                  >
+                                    {formatTimestamp(message.createdAt)}
+                                  </span>
+                                </div>
+                                <p
+                                  className={`whitespace-pre-wrap text-sm leading-6 ${
+                                    /bg-zinc-950/.test(layout.bubble)
+                                      ? "text-zinc-100"
+                                      : "text-zinc-800"
+                                  }`}
+                                >
+                                  {message.content}
+                                </p>
                               </div>
-                            ) : null}
-                          </div>
-                        ))
+                            </div>
+                          );
+                        })
+                        
                       )}
                     </div>
                   </ScrollArea>
