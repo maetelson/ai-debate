@@ -699,7 +699,7 @@ export function DebateApp({
                             <Button
                               type="button"
                               variant="ghost"
-                              className="h-7 w-7 rounded-full text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-700"
+                              className="h-7 w-7 rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900"
                               disabled={deletingSessionId === session.id}
                               onClick={(event) => {
                                 event.stopPropagation();
