@@ -17,6 +17,7 @@ This project uses a modern Next.js version. Before making framework-level change
 - Treat agent persona fields as behavior-shaping inputs, not display-only metadata.
 - Prefer small focused helpers in `src/lib` over bloating route handlers or page components.
 - If storage changes later, keep the `DebateSession` shape stable when practical.
+- When a patch is large, split it into small safe edits instead of retrying one oversized patch.
 
 ## Validation Checklist
 - Run `npm run lint`

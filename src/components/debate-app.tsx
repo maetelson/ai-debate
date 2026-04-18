@@ -1,15 +1,15 @@
 "use client";
 
-import { startTransition, useState } from "react";
+import { startTransition, useMemo, useState } from "react";
 import { nanoid } from "nanoid";
 import {
   AlertCircle,
-  Bot,
-  Files,
+  ChevronDown,
   LoaderCircle,
   MessageSquareText,
+  Pencil,
   Plus,
-  Scale,
+  Settings2,
   Sparkles,
 } from "lucide-react";
 
@@ -42,7 +42,7 @@ import {
   DebateStreamEvent,
   SessionSummary,
 } from "@/lib/types";
-import { formatTimestamp } from "@/lib/utils";
+import { formatTimestamp, truncate } from "@/lib/utils";
 
 const personaHints = [
   "논리적이고 공격적",
@@ -63,14 +63,26 @@ function createNewAgent(): AgentConfig {
   };
 }
 
+function createFreshDraft() {
+  return {
+    instruction: "",
+    goal: "",
+    model: DEFAULT_MODEL,
+    consensusThreshold: DEFAULT_CONSENSUS_THRESHOLD,
+    maxRounds: DEFAULT_MAX_ROUNDS,
+    agents: createDefaultAgents(),
+    files: [] as File[],
+  };
+}
+
 function agentTone(role: string, index: number) {
   if (/moderator|judge|arbiter/i.test(role)) {
     return "border-zinc-300 bg-zinc-50";
   }
 
   return index % 2 === 0
-    ? "border-sky-200 bg-sky-50"
-    : "border-orange-200 bg-orange-50";
+    ? "border-zinc-200 bg-white"
+    : "border-zinc-300 bg-zinc-50";
 }
 
 export function DebateApp({
@@ -80,7 +92,6 @@ export function DebateApp({
 }) {
   const [instruction, setInstruction] = useState("");
   const [goal, setGoal] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [consensusThreshold, setConsensusThreshold] = useState(
     DEFAULT_CONSENSUS_THRESHOLD
@@ -96,11 +107,50 @@ export function DebateApp({
   const [errorMessage, setErrorMessage] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+
+  const selectedDocumentNames = useMemo(() => {
+    if (activeSession?.documents.length) {
+      return activeSession.documents.map((document) => document.name);
+    }
+
+    return files.map((file) => file.name);
+  }, [activeSession, files]);
+
+  const selectedAgents = activeSession?.input.agents ?? agents;
+  const selectedGoal = activeSession?.input.goal || goal;
+  const selectedInstruction = activeSession?.input.instruction || instruction;
+  const selectedThreshold =
+    activeSession?.input.consensusThreshold ?? consensusThreshold;
+  const selectedMaxRounds = activeSession?.input.maxRounds ?? maxRounds;
+  const selectedModel = activeSession?.input.model ?? model;
 
   async function loadSessions() {
     const response = await fetch("/api/sessions");
     const data = (await response.json()) as { sessions: SessionSummary[] };
     setSessions(data.sessions);
+  }
+
+  function resetDraft() {
+    const fresh = createFreshDraft();
+    setInstruction(fresh.instruction);
+    setGoal(fresh.goal);
+    setModel(fresh.model);
+    setConsensusThreshold(fresh.consensusThreshold);
+    setMaxRounds(fresh.maxRounds);
+    setAgents(fresh.agents);
+    setFiles(fresh.files);
+    setBrief(null);
+    setErrorMessage("");
+  }
+
+  function openNewSessionModal() {
+    resetDraft();
+    setIsComposerOpen(true);
+  }
+
+  function openEditSessionModal() {
+    setIsComposerOpen(true);
   }
 
   function updateAgent(agentId: string, field: keyof AgentConfig, value: string) {
@@ -155,6 +205,7 @@ export function DebateApp({
     setActiveSession(null);
     setLatestSnapshot(null);
     setStatusMessage("문서 업로드 준비 중");
+    setIsComposerOpen(false);
 
     const formData = new FormData();
     files.forEach((file) => {
@@ -163,9 +214,8 @@ export function DebateApp({
     formData.append("instruction", instruction);
     formData.append("goal", goal);
     formData.append("consensusThreshold", String(consensusThreshold));
-    formData.append("maxRounds", String(maxRounds));
+    formData.append("maxRounds", String(Math.min(Math.max(maxRounds || 10, 10), 50)));
     formData.append("model", model);
-    formData.append("apiKey", apiKey);
     formData.append("agents", JSON.stringify(agents));
 
     setIsRunning(true);
@@ -276,282 +326,172 @@ export function DebateApp({
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.12),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#f6f2e8_100%)]">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-6 px-4 py-6 lg:px-8">
-        <header className="grid gap-4 rounded-[28px] border border-white/70 bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur md:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-3">
-            <Badge variant="outline" className="w-fit border-sky-200 bg-sky-50 text-sky-900">
-              GPT Debate Studio
-            </Badge>
-            <h1 className="max-w-2xl text-3xl font-semibold tracking-tight text-zinc-950 md:text-4xl">
-              문서를 올리고, 목표를 정하고, 서로 다른 성격의 GPT들이 끝까지 토론하게 만드세요.
-            </h1>
-            <p className="max-w-3xl text-sm leading-6 text-zinc-600 md:text-base">
-              `pdf/docx/txt/html` 문서를 기반으로 여러 에이전트가 채팅처럼 논의하고,
-              목표 기준 합의율이 충분히 높아지면 결과를 고정합니다.
-            </p>
-          </div>
-          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-700">현재 상태</span>
-              <Badge variant={isRunning ? "default" : "secondary"}>
-                {isRunning ? "Running" : "Ready"}
-              </Badge>
-            </div>
-            <p className="text-sm text-zinc-600">{statusMessage}</p>
-            <div className="grid gap-2 md:grid-cols-3">
-              <StatCard icon={Files} label="문서 형식" value="PDF / DOCX / TXT / HTML" />
-              <StatCard icon={Bot} label="에이전트" value={`${agents.length}명`} />
-              <StatCard
-                icon={Scale}
-                label="합의 기준"
-                value={`${latestSnapshot?.agreementScore ?? consensusThreshold}%`}
-              />
-            </div>
-          </div>
-        </header>
+    <>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(24,24,27,0.08),_transparent_28%),linear-gradient(180deg,#fcfcfd_0%,#f4f4f5_100%)]">
+        <div className="mx-auto flex min-h-screen w-full max-w-[1680px] gap-4 p-4 lg:p-6">
+          <aside className="hidden w-[300px] shrink-0 lg:block">
+            <div className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col rounded-[28px] border border-zinc-200 bg-white/90 p-4 shadow-[0_20px_60px_rgba(15,23,42,0.06)] backdrop-blur">
+              <div className="space-y-3">
+                <Badge variant="outline" className="w-fit bg-zinc-100 text-zinc-900">
+                  GPT Debate Studio
+                </Badge>
+                <div>
+                  <h1 className="text-xl font-semibold tracking-tight text-zinc-950">
+                    Debate Sessions
+                  </h1>
+                  <p className="mt-1 text-sm leading-6 text-zinc-500">
+                    새 세션을 시작하고, 이전 토론을 다시 불러와 이어서 확인하세요.
+                  </p>
+                </div>
+                <Button className="w-full" onClick={openNewSessionModal}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  새 세션
+                </Button>
+              </div>
 
-        <div className="grid gap-6 xl:grid-cols-[480px_minmax(0,1fr)]">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <Card>
-              <CardHeader>
-                <CardTitle>Goal Composer</CardTitle>
-                <CardDescription>
-                  합의율은 여기서 정한 목표를 기준으로 계산됩니다.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Field label="Instruction">
-                  <Textarea
-                    value={instruction}
-                    onChange={(event) => setInstruction(event.target.value)}
-                    placeholder="이 문서를 바탕으로 가장 설득력 있는 전략을 도출해라."
-                    className="min-h-28"
-                    required
-                  />
-                </Field>
-                <Field label="Debate Goal">
-                  <Textarea
-                    value={goal}
-                    onChange={(event) => setGoal(event.target.value)}
-                    placeholder="문서 근거만으로 실행 가능한 결론 1개를 도출한다."
-                    className="min-h-24"
-                    required
-                  />
-                </Field>
-                <Field label="OpenAI API Key (optional)">
-                  <Input
-                    type="password"
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder="입력하지 않으면 OPENAI_API_KEY를 사용합니다."
-                  />
-                </Field>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="Model">
-                    <select
-                      value={model}
-                      onChange={(event) => setModel(event.target.value)}
-                      className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm"
-                    >
-                      <option value="gpt-5">gpt-5</option>
-                      <option value="gpt-5-mini">gpt-5-mini</option>
-                      <option value="gpt-4.1">gpt-4.1</option>
-                    </select>
-                  </Field>
-                  <Field label="Files">
-                    <Input
-                      type="file"
-                      accept=".pdf,.docx,.txt,.html,.htm"
-                      multiple
-                      onChange={(event) =>
-                        setFiles(Array.from(event.target.files ?? []))
-                      }
-                    />
-                  </Field>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field
-                    label={`Consensus Threshold · ${consensusThreshold}%`}
-                    helper="Moderator score와 goal alignment를 함께 봅니다."
-                  >
-                    <input
-                      type="range"
-                      min={60}
-                      max={95}
-                      step={1}
-                      value={consensusThreshold}
-                      onChange={(event) =>
-                        setConsensusThreshold(Number(event.target.value))
-                      }
-                      className="w-full accent-zinc-900"
-                    />
-                  </Field>
-                  <Field
-                    label={`Max Rounds · ${maxRounds}`}
-                    helper="8라운드 이후는 수렴 모드로 전환됩니다."
-                  >
-                    <input
-                      type="range"
-                      min={8}
-                      max={16}
-                      step={1}
-                      value={maxRounds}
-                      onChange={(event) => setMaxRounds(Number(event.target.value))}
-                      className="w-full accent-zinc-900"
-                    />
-                  </Field>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {files.length === 0 ? (
-                    <Badge variant="secondary">업로드된 문서 없음</Badge>
+              <Separator className="my-4" />
+
+              <ScrollArea className="flex-1 pr-1">
+                <div className="space-y-2">
+                  {isLoadingSession ? (
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      세션을 불러오는 중입니다…
+                    </div>
+                  ) : null}
+                  {sessions.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      저장된 세션이 아직 없습니다.
+                    </div>
                   ) : (
-                    files.map((file) => (
-                      <Badge key={`${file.name}-${file.size}`} variant="outline">
-                        {file.name}
-                      </Badge>
+                    sessions.map((session) => (
+                      <button
+                        key={session.id}
+                        type="button"
+                        className="w-full rounded-2xl border border-zinc-200 bg-white p-4 text-left transition hover:border-zinc-300 hover:bg-zinc-50"
+                        onClick={() => void loadSession(session.id)}
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <Badge
+                            variant={session.status === "completed" ? "default" : "secondary"}
+                          >
+                            {session.status}
+                          </Badge>
+                          <span className="text-xs text-zinc-500">
+                            {formatTimestamp(session.updatedAt)}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium leading-6 text-zinc-950">
+                          {session.goal}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-zinc-500">
+                          {session.instruction}
+                        </p>
+                        <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
+                          <span>{session.messageCount} messages</span>
+                          <span>{session.agreementScore ?? 0}%</span>
+                        </div>
+                      </button>
                     ))
                   )}
                 </div>
-              </CardContent>
-            </Card>
+              </ScrollArea>
+            </div>
+          </aside>
 
-            <Card>
-              <CardHeader className="flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Agent Builder</CardTitle>
-                  <CardDescription>
-                    역할, 성격, 말투가 실제 토론 프롬프트에 그대로 반영됩니다.
-                  </CardDescription>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAgents((current) => [...current, createNewAgent()])}
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  Agent 추가
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  {personaHints.map((hint) => (
-                    <Badge key={hint} variant="secondary">
-                      {hint}
+          <main className="flex min-w-0 flex-1 flex-col gap-4">
+            <header className="rounded-[28px] border border-zinc-200 bg-white/90 p-4 shadow-[0_20px_60px_rgba(15,23,42,0.05)] backdrop-blur">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={isRunning ? "default" : "secondary"}>
+                      {isRunning ? "Running" : "Ready"}
                     </Badge>
-                  ))}
+                    <Badge variant="outline">{statusMessage}</Badge>
+                    {selectedDocumentNames.length ? (
+                      <Badge variant="outline">{selectedDocumentNames.length} docs</Badge>
+                    ) : null}
+                    {selectedAgents.length ? (
+                      <Badge variant="outline">{selectedAgents.length} agents</Badge>
+                    ) : null}
+                    <Badge variant="outline">{selectedThreshold}% threshold</Badge>
+                    <Badge variant="outline">{selectedMaxRounds} rounds</Badge>
+                    <Badge variant="outline">{selectedModel}</Badge>
+                  </div>
+
+                  <div>
+                    <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
+                      {selectedGoal || "새 세션을 시작해 토론 목표를 설정하세요."}
+                    </h2>
+                    <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-500">
+                      {selectedInstruction
+                        ? truncate(selectedInstruction, 180)
+                        : "Goal Composer와 Agent Builder는 새 세션 팝업에서만 설정합니다."}
+                    </p>
+                  </div>
                 </div>
-                {agents.map((agent, index) => (
-                  <div
-                    key={agent.id}
-                    className={`rounded-2xl border p-4 ${agentTone(agent.role, index)}`}
-                  >
-                    <div className="mb-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-zinc-900">{agent.name}</p>
-                        <p className="text-xs text-zinc-600">{agent.role}</p>
-                      </div>
-                      {agents.length > 2 ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setAgents((current) =>
-                              current.filter((item) => item.id !== agent.id)
-                            )
-                          }
-                        >
-                          제거
-                        </Button>
-                      ) : null}
+
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button variant="outline" onClick={openEditSessionModal}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    설정 수정
+                  </Button>
+                  <Button onClick={openNewSessionModal}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    새 세션
+                  </Button>
+                </div>
+              </div>
+
+              {(selectedGoal || selectedInstruction || selectedAgents.length > 0) && (
+                <details className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                  <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-zinc-800">
+                    <span className="flex items-center gap-2">
+                      <Settings2 className="h-4 w-4" />
+                      자세한 세션 설정 보기
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-zinc-500" />
+                  </summary>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                    <div className="space-y-4">
+                      <MetaBlock label="Goal" value={selectedGoal || "설정되지 않음"} />
+                      <MetaBlock
+                        label="Instruction"
+                        value={selectedInstruction || "설정되지 않음"}
+                      />
+                      <MetaBlock
+                        label="Documents"
+                        value={
+                          selectedDocumentNames.length
+                            ? selectedDocumentNames.join(", ")
+                            : "아직 문서가 선택되지 않았습니다."
+                        }
+                      />
                     </div>
-                    <div className="grid gap-3">
-                      <Input
-                        value={agent.name}
-                        onChange={(event) =>
-                          updateAgent(agent.id, "name", event.target.value)
-                        }
-                        placeholder="Agent name"
+                    <div className="space-y-4">
+                      <MetaBlock
+                        label="Agents"
+                        value={selectedAgents
+                          .map((agent) => `${agent.name} · ${agent.role}`)
+                          .join("\n")}
                       />
-                      <Input
-                        value={agent.role}
-                        onChange={(event) =>
-                          updateAgent(agent.id, "role", event.target.value)
-                        }
-                        placeholder="Role"
-                      />
-                      <Textarea
-                        value={agent.persona}
-                        onChange={(event) =>
-                          updateAgent(agent.id, "persona", event.target.value)
-                        }
-                        placeholder="성격"
-                        className="min-h-20"
-                      />
-                      <Input
-                        value={agent.tone || ""}
-                        onChange={(event) =>
-                          updateAgent(agent.id, "tone", event.target.value)
-                        }
-                        placeholder="Tone"
-                      />
-                      <Textarea
-                        value={agent.debateStyle || ""}
-                        onChange={(event) =>
-                          updateAgent(agent.id, "debateStyle", event.target.value)
-                        }
-                        placeholder="Debate style"
-                        className="min-h-20"
-                      />
-                      <Textarea
-                        value={agent.objective || ""}
-                        onChange={(event) =>
-                          updateAgent(agent.id, "objective", event.target.value)
-                        }
-                        placeholder="Objective"
-                        className="min-h-20"
+                      <MetaBlock
+                        label="Advanced"
+                        value={`Consensus ${selectedThreshold}% · Max rounds ${selectedMaxRounds} · Model ${selectedModel}`}
                       />
                     </div>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Button type="submit" className="w-full" size="lg" disabled={isRunning}>
-              {isRunning ? (
-                <>
-                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                  Debate running
-                </>
-              ) : (
-                "토론 시작"
+                </details>
               )}
-            </Button>
+            </header>
 
-            {errorMessage ? (
-              <Card className="border-orange-200 bg-orange-50">
-                <CardContent className="flex items-start gap-3 p-4">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-orange-700" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-orange-900">실행 오류</p>
-                    <p className="text-sm text-orange-800">{errorMessage}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
-          </form>
-
-          <div className="space-y-6">
-            <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-              <Card className="min-h-[680px]">
-                <CardHeader>
+            <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <Card className="min-h-[720px]">
+                <CardHeader className="border-b border-zinc-100 pb-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <CardTitle>Debate Timeline</CardTitle>
                       <CardDescription>
-                        실제 메시지 흐름과 persona 반영 결과를 채팅 형식으로 확인합니다.
+                        실제 배포된 앱처럼 본문은 대화 자체에 집중하도록 구성했습니다.
                       </CardDescription>
                     </div>
                     <Badge variant="outline">
@@ -559,14 +499,20 @@ export function DebateApp({
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="h-[580px]">
+                <CardContent className="h-[640px] pt-5">
                   <ScrollArea className="h-full pr-2">
                     <div className="space-y-4">
                       {!activeSession?.messages.length ? (
                         <EmptyState
                           icon={MessageSquareText}
-                          title="토론 타임라인이 비어 있습니다"
-                          description="왼쪽 패널에서 문서와 목표를 입력하고 토론을 시작하면 메시지가 이곳에 순서대로 쌓입니다."
+                          title="대화가 아직 시작되지 않았습니다"
+                          description="상단의 새 세션 버튼을 눌러 Goal과 Agent를 설정하면, 메인 화면은 토론 본문만 보여주는 형태로 진행됩니다."
+                          action={
+                            <Button onClick={openNewSessionModal}>
+                              <Plus className="mr-2 h-4 w-4" />
+                              새 세션 시작
+                            </Button>
+                          }
                         />
                       ) : (
                         activeSession.messages.map((message, index) => (
@@ -608,12 +554,12 @@ export function DebateApp({
                 </CardContent>
               </Card>
 
-              <div className="space-y-6">
+              <div className="space-y-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Goal & Consensus</CardTitle>
+                    <CardTitle>Consensus</CardTitle>
                     <CardDescription>
-                      현재 합의율과 왜 아직 부족한지를 함께 표시합니다.
+                      목표 기준 합의율과 아직 남은 핵심 이견을 표시합니다.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -622,7 +568,7 @@ export function DebateApp({
                         Goal
                       </p>
                       <p className="mt-2 text-sm leading-6 text-zinc-800">
-                        {goal || "아직 입력되지 않았습니다."}
+                        {selectedGoal || "아직 설정되지 않았습니다."}
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -634,30 +580,26 @@ export function DebateApp({
                       </div>
                       <Progress value={latestSnapshot?.agreementScore ?? 0} />
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-                      <MiniMetric
-                        label="Goal Alignment"
-                        value={latestSnapshot?.goalAlignmentScore ?? 0}
-                      />
-                      <MiniMetric
-                        label="Evidence Strength"
-                        value={latestSnapshot?.evidenceStrengthScore ?? 0}
-                      />
-                    </div>
+                    <MiniMetric
+                      label="Goal Alignment"
+                      value={latestSnapshot?.goalAlignmentScore ?? 0}
+                    />
+                    <MiniMetric
+                      label="Evidence Strength"
+                      value={latestSnapshot?.evidenceStrengthScore ?? 0}
+                    />
                     <Separator />
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-zinc-800">
-                        왜 아직 80%가 아닌가
-                      </p>
+                      <p className="text-sm font-medium text-zinc-800">현재 남은 쟁점</p>
                       <p className="text-sm leading-6 text-zinc-600">
                         {latestSnapshot?.openDisputes[0] ||
-                          "토론이 아직 시작되지 않았습니다."}
+                          "토론이 시작되면 남은 쟁점이 이곳에 표시됩니다."}
                       </p>
                     </div>
                     {brief ? (
-                      <div className="space-y-2 rounded-2xl border border-zinc-200 p-4">
+                      <div className="rounded-2xl border border-zinc-200 bg-white p-4">
                         <p className="text-sm font-medium text-zinc-900">Debate Brief</p>
-                        <ul className="space-y-2 text-sm text-zinc-600">
+                        <ul className="mt-3 space-y-2 text-sm text-zinc-600">
                           {brief.successCriteria.map((criterion) => (
                             <li key={criterion}>• {criterion}</li>
                           ))}
@@ -691,16 +633,14 @@ export function DebateApp({
                             {activeSession.finalReport.finalAnswer}
                           </p>
                         </div>
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-                          <MiniMetric
-                            label="Agreement"
-                            value={activeSession.finalReport.agreementScore}
-                          />
-                          <MiniMetric
-                            label="Goal Fit"
-                            value={activeSession.finalReport.goalAlignmentScore}
-                          />
-                        </div>
+                        <MiniMetric
+                          label="Agreement"
+                          value={activeSession.finalReport.agreementScore}
+                        />
+                        <MiniMetric
+                          label="Goal Fit"
+                          value={activeSession.finalReport.goalAlignmentScore}
+                        />
                         <div className="space-y-2">
                           <p className="text-sm font-medium text-zinc-900">Key Evidence</p>
                           {activeSession.finalReport.keyEvidence.length ? (
@@ -729,68 +669,321 @@ export function DebateApp({
                     )}
                   </CardContent>
                 </Card>
+
+                {errorMessage ? (
+                  <Card className="border-zinc-300 bg-zinc-100">
+                    <CardContent className="flex items-start gap-3 p-4">
+                      <AlertCircle className="mt-0.5 h-4 w-4 text-zinc-700" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-zinc-900">실행 오류</p>
+                        <p className="text-sm text-zinc-700">{errorMessage}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
               </div>
             </div>
-
-            <Card>
-              <CardHeader className="flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Saved Sessions</CardTitle>
-                  <CardDescription>
-                    완료된 토론과 진행 중 세션을 다시 열어볼 수 있습니다.
-                  </CardDescription>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => void loadSessions()}>
-                  새로고침
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {sessions.length === 0 ? (
-                  <EmptyState
-                    icon={Files}
-                    title="저장된 세션이 없습니다"
-                    description="첫 토론을 실행하면 이곳에 자동으로 기록됩니다."
-                  />
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-                    {sessions.map((session) => (
-                      <button
-                        key={session.id}
-                        type="button"
-                        className="rounded-2xl border border-zinc-200 bg-white p-4 text-left transition hover:border-zinc-300 hover:bg-zinc-50"
-                        onClick={() => void loadSession(session.id)}
-                      >
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <Badge variant={session.status === "completed" ? "default" : "secondary"}>
-                            {session.status}
-                          </Badge>
-                          <span className="text-xs text-zinc-500">
-                            {formatTimestamp(session.updatedAt)}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium leading-6 text-zinc-950">
-                          {session.goal}
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-zinc-600">
-                          {session.instruction}
-                        </p>
-                        <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
-                          <span>{session.messageCount} messages</span>
-                          <span>{session.agreementScore ?? 0}% agreement</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {isLoadingSession ? (
-                  <p className="mt-3 text-sm text-zinc-500">세션을 불러오는 중입니다…</p>
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
+          </main>
         </div>
       </div>
-    </div>
+
+      {isComposerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-[0_30px_80px_rgba(9,9,11,0.18)]">
+            <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-6 py-5">
+              <div>
+                <p className="text-sm font-medium text-zinc-500">New Session</p>
+                <h3 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">
+                  Goal과 Agent를 먼저 정하고 토론을 시작합니다.
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-500">
+                  메인 화면에는 요약만 남기고, 자세한 설정은 이 팝업과 상단 토글에서만 확인할 수 있습니다.
+                </p>
+              </div>
+              <Button variant="ghost" onClick={() => setIsComposerOpen(false)}>
+                닫기
+              </Button>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div className="max-h-[calc(92vh-88px)] overflow-auto px-6 py-6">
+                <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Goal Composer</CardTitle>
+                        <CardDescription>
+                          합의율은 여기서 정한 목표를 기준으로 계산됩니다.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <Field label="Instruction">
+                          <Textarea
+                            value={instruction}
+                            onChange={(event) => setInstruction(event.target.value)}
+                            placeholder="이 문서를 바탕으로 가장 설득력 있는 전략을 도출해라."
+                            className="min-h-28"
+                            required
+                          />
+                        </Field>
+                        <Field label="Debate Goal">
+                          <Textarea
+                            value={goal}
+                            onChange={(event) => setGoal(event.target.value)}
+                            placeholder="문서 근거만으로 실행 가능한 결론 1개를 도출한다."
+                            className="min-h-24"
+                            required
+                          />
+                        </Field>
+                        <Field label="Documents">
+                          <Input
+                            type="file"
+                            accept=".pdf,.docx,.txt,.html,.htm"
+                            multiple
+                            onChange={(event) =>
+                              setFiles(Array.from(event.target.files ?? []))
+                            }
+                          />
+                        </Field>
+                        <div className="flex flex-wrap gap-2">
+                          {files.length === 0 ? (
+                            <Badge variant="secondary">업로드된 문서 없음</Badge>
+                          ) : (
+                            files.map((file) => (
+                              <Badge key={`${file.name}-${file.size}`} variant="outline">
+                                {file.name}
+                              </Badge>
+                            ))
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Agent Builder</CardTitle>
+                        <CardDescription>
+                          역할, 성격, 말투가 실제 토론 프롬프트에 그대로 반영됩니다.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="flex flex-wrap gap-2">
+                          {personaHints.map((hint) => (
+                            <Badge key={hint} variant="secondary">
+                              {hint}
+                            </Badge>
+                          ))}
+                        </div>
+                        {agents.map((agent, index) => (
+                          <div
+                            key={agent.id}
+                            className={`rounded-2xl border p-4 ${agentTone(agent.role, index)}`}
+                          >
+                            <div className="mb-3 flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-zinc-900">
+                                  {agent.name}
+                                </p>
+                                <p className="text-xs text-zinc-600">{agent.role}</p>
+                              </div>
+                              {agents.length > 2 ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    setAgents((current) =>
+                                      current.filter((item) => item.id !== agent.id)
+                                    )
+                                  }
+                                >
+                                  제거
+                                </Button>
+                              ) : null}
+                            </div>
+                            <div className="grid gap-3">
+                              <Input
+                                value={agent.name}
+                                onChange={(event) =>
+                                  updateAgent(agent.id, "name", event.target.value)
+                                }
+                                placeholder="Agent name"
+                              />
+                              <Input
+                                value={agent.role}
+                                onChange={(event) =>
+                                  updateAgent(agent.id, "role", event.target.value)
+                                }
+                                placeholder="Role"
+                              />
+                              <Textarea
+                                value={agent.persona}
+                                onChange={(event) =>
+                                  updateAgent(agent.id, "persona", event.target.value)
+                                }
+                                placeholder="성격"
+                                className="min-h-20"
+                              />
+                              <Input
+                                value={agent.tone || ""}
+                                onChange={(event) =>
+                                  updateAgent(agent.id, "tone", event.target.value)
+                                }
+                                placeholder="Tone"
+                              />
+                              <Textarea
+                                value={agent.debateStyle || ""}
+                                onChange={(event) =>
+                                  updateAgent(agent.id, "debateStyle", event.target.value)
+                                }
+                                placeholder="Debate style"
+                                className="min-h-20"
+                              />
+                              <Textarea
+                                value={agent.objective || ""}
+                                onChange={(event) =>
+                                  updateAgent(agent.id, "objective", event.target.value)
+                                }
+                                placeholder="Objective"
+                                className="min-h-20"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setAgents((current) => [...current, createNewAgent()])
+                          }
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Agent 추가
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Advanced Settings</CardTitle>
+                        <CardDescription>
+                          모델, 라운드 수, 합의 기준을 조정합니다.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <Field label="Model">
+                          <select
+                            value={model}
+                            onChange={(event) => setModel(event.target.value)}
+                            className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm"
+                          >
+                            <option value="gpt-5">gpt-5</option>
+                            <option value="gpt-5-mini">gpt-5-mini</option>
+                            <option value="gpt-4.1">gpt-4.1</option>
+                          </select>
+                        </Field>
+                        <Field
+                          label={`Consensus Threshold · ${consensusThreshold}%`}
+                          helper="Moderator score와 goal alignment를 함께 봅니다."
+                        >
+                          <input
+                            type="range"
+                            min={60}
+                            max={95}
+                            step={1}
+                            value={consensusThreshold}
+                            onChange={(event) =>
+                              setConsensusThreshold(Number(event.target.value))
+                            }
+                            className="w-full accent-zinc-900"
+                          />
+                        </Field>
+                        <Field
+                          label="Max Rounds"
+                          helper="기본 20, 허용 범위는 10~50입니다."
+                        >
+                          <Input
+                            type="number"
+                            min={10}
+                            max={50}
+                            value={maxRounds}
+                            onChange={(event) =>
+                              setMaxRounds(
+                                Math.min(
+                                  Math.max(Number(event.target.value) || 10, 10),
+                                  50
+                                )
+                              )
+                            }
+                            className="w-full"
+                          />
+                        </Field>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Session Summary</CardTitle>
+                        <CardDescription>
+                          시작 전에 선택된 설정을 한 번 더 확인합니다.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <MetaBlock
+                          label="Goal"
+                          value={goal || "아직 목표가 입력되지 않았습니다."}
+                        />
+                        <MetaBlock
+                          label="Instruction"
+                          value={instruction || "아직 instruction이 입력되지 않았습니다."}
+                        />
+                        <MetaBlock
+                          label="Agents"
+                          value={agents
+                            .map((agent) => `${agent.name} · ${agent.role} · ${agent.persona}`)
+                            .join("\n")}
+                        />
+                        <MetaBlock
+                          label="Documents"
+                          value={
+                            files.length
+                              ? files.map((file) => file.name).join(", ")
+                              : "아직 문서가 선택되지 않았습니다."
+                          }
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-6 py-5">
+                <p className="text-sm text-zinc-500">
+                  시작 후 메인 화면에는 요약만 남고, 상세 설정은 상단 토글에서 확인할 수 있습니다.
+                </p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsComposerOpen(false)}>
+                    취소
+                  </Button>
+                  <Button type="submit" disabled={isRunning || files.length === 0}>
+                    {isRunning ? (
+                      <>
+                        <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                        Debate running
+                      </>
+                    ) : (
+                      "토론 시작"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -814,20 +1007,15 @@ function Field({
   );
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
+function MetaBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-white bg-white p-4 shadow-sm">
-      <Icon className="h-4 w-4 text-zinc-500" />
-      <p className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-500">{label}</p>
-      <p className="mt-1 text-sm font-medium text-zinc-900">{value}</p>
+    <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">
+        {label}
+      </p>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-800">
+        {value}
+      </p>
     </div>
   );
 }
@@ -848,16 +1036,19 @@ function EmptyState({
   icon: Icon,
   title,
   description,
+  action,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
+  action?: React.ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 py-10 text-center">
+    <div className="flex h-full min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 py-10 text-center">
       <Icon className="h-7 w-7 text-zinc-400" />
       <p className="mt-4 text-sm font-medium text-zinc-900">{title}</p>
       <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">{description}</p>
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }

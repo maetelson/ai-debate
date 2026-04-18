@@ -1,15 +1,33 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
 @import "tailwindcss";
 
 :root {
-  --background: #f6f2e8;
-  --foreground: #111827;
+  --gray-0: #ffffff;
+  --gray-50: #fafafa;
+  --gray-100: #f4f4f5;
+  --gray-200: #e4e4e7;
+  --gray-300: #d4d4d8;
+  --gray-400: #a1a1aa;
+  --gray-500: #71717a;
+  --gray-600: #52525b;
+  --gray-700: #3f3f46;
+  --gray-800: #27272a;
+  --gray-900: #18181b;
+  --gray-950: #09090b;
+
+  --background: var(--gray-50);
+  --foreground: var(--gray-900);
+  --card: var(--gray-0);
+  --muted: var(--gray-500);
+  --border: var(--gray-200);
+  --ring: var(--gray-400);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-body);
-  --font-mono: var(--font-display);
+  --font-sans: "Pretendard Variable", "Pretendard", sans-serif;
+  --font-mono: "Pretendard Variable", "Pretendard", sans-serif;
 }
 
 * {
@@ -24,14 +42,19 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-body), sans-serif;
+  font-family: "Pretendard Variable", "Pretendard", sans-serif;
+}
+
+::selection {
+  background: var(--gray-200);
+  color: var(--gray-950);
 }
 
 h1,
 h2,
 h3,
 h4 {
-  font-family: var(--font-display), sans-serif;
+  font-family: "Pretendard Variable", "Pretendard", sans-serif;
 }
 
 button,

@@ -5,7 +5,7 @@ import { AgentConfig } from "@/lib/types";
 export const DEFAULT_MODEL = "gpt-5";
 export const DEFAULT_CONSENSUS_THRESHOLD = 80;
 export const DEFAULT_SOFT_LIMIT = 8;
-export const DEFAULT_MAX_ROUNDS = 12;
+export const DEFAULT_MAX_ROUNDS = 20;
 
 export function createDefaultAgents(): AgentConfig[] {
   return [

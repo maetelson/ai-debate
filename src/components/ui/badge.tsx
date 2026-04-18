@@ -18,7 +18,7 @@ export function Badge({
         variant === "default" && "border-zinc-900 bg-zinc-900 text-white",
         variant === "secondary" && "border-zinc-200 bg-zinc-100 text-zinc-700",
         variant === "outline" && "border-zinc-300 bg-white text-zinc-700",
-        variant === "danger" && "border-orange-200 bg-orange-50 text-orange-800",
+        variant === "danger" && "border-zinc-300 bg-zinc-100 text-zinc-800",
         className
       )}
       {...props}
