@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgentPrompt,
   buildDebateBrief,
+  buildEffectiveInstruction,
   getRoundPhase,
   shouldStopDebate,
 } from "@/lib/debate-engine";
@@ -32,6 +33,7 @@ describe("debate engine helpers", () => {
   it("includes persona and tone in the agent prompt", () => {
     const brief = buildDebateBrief(
       {
+        title: "Rollout decision",
         instruction: "Choose a rollout plan.",
         goal: "문서 근거만으로 가장 안전한 전략 1개를 고른다.",
         consensusThreshold: 80,
@@ -54,6 +56,16 @@ describe("debate engine helpers", () => {
     expect(prompt).toContain(agents[1]!.persona);
     expect(prompt).toContain(agents[1]!.tone!);
     expect(prompt).toContain("doc-1-chunk-0");
+    expect(prompt).toContain("기능 나열 금지");
+    expect(prompt).toContain("Choose a rollout plan.");
+  });
+
+  it("always prepends the default debate framework", () => {
+    const instruction = buildEffectiveInstruction("be/fe 2명이 2주 안에 검증할 실험을 정하라.");
+
+    expect(instruction).toContain('주어진 아이디어에 대해 "지금 당장 만들 MVP"를 뽑는 것이 아니라');
+    expect(instruction).toContain("핵심 가설 표");
+    expect(instruction).toContain("be/fe 2명이 2주 안에 검증할 실험을 정하라.");
   });
 
   it("switches to converge phase from round 8", () => {

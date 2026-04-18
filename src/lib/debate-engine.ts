@@ -35,6 +35,75 @@ type RunDebateArgs = {
 };
 
 const MIN_GOAL_ALIGNMENT = 70;
+const DEFAULT_DEBATE_FRAMEWORK = `
+목표:
+주어진 아이디어에 대해 "지금 당장 만들 MVP"를 뽑는 것이 아니라,
+가장 핵심적인 사업 가설을 검증하기 위한 최적의 다음 행동을 결정한다.
+
+절대 규칙:
+1. 기능 나열 금지. 먼저 핵심 가설부터 정의할 것.
+2. 대안은 최대 3개만 다룰 것.
+3. 각 대안마다 다음 5가지를 반드시 적을 것:
+   - 검증하려는 가설
+   - 왜 지금 중요한지
+   - 가장 싼 실험 방법
+   - 성공 기준
+   - 실패 시 무엇을 버릴지
+4. 이미 쓴 시간/노력/애착은 판단 근거에서 제외할 것.
+5. "둘 다 가능", "상황에 따라 다름", "추가 정보가 필요함"으로 끝내지 말 것.
+6. 합의가 안 되면 더 토론하지 말고, 남은 핵심 불확실성 1개와 그걸 검증할 실험 1개만 남길 것.
+
+평가 기준:
+- Learning Speed: 얼마나 빨리 중요한 것을 배울 수 있는가
+- Assumption Risk: 가장 치명적인 가설을 실제로 건드리는가
+- Feasibility: 2주 내 검증 가능한가
+- Evidence Quality: 주장 근거가 명확한가
+- Decision Usefulness: 지금 팀이 바로 행동할 수 있는가
+
+토론 절차:
+Round 1. 각 Debater는 서로의 답을 보지 않고 독립적으로 아래를 작성한다.
+- 문제 정의 1문장
+- 핵심 가설 3개
+- 우선 검증할 가설 1개
+- 제안 대안 2개
+- 추천안 1개
+
+Round 2. 서로의 답을 본 뒤 상대 논리의 약점만 공격한다.
+- 상대가 놓친 치명적 가정
+- 허위 낙관 또는 과도한 보수성
+- 무엇을 만들면 안 되는지
+
+Round 3. Judge가 판정한다.
+Judge는 아래 규칙을 따른다.
+- "누가 더 설득력 있었는지"가 아니라 "어느 선택이 가장 빨리 불확실성을 줄이는지"로 판단할 것.
+- 75% 이상 한 방향으로 수렴했다고 판단되면 합의로 종료할 것.
+- 합의가 아니면 추가 라운드 없이 실험안 1개만 확정할 것.
+- 최종 결과를 proceed / revise / park / kill 중 하나로만 판정할 것.
+
+최종 출력 형식:
+1. 현재 논의 중인 아이디어 한 줄 정의
+2. 핵심 가설 표
+   | 가설 | 중요도 | 불확실성 | 우선순위 |
+3. 대안 비교 표
+   | 대안 | 검증 가설 | 실험 방식 | 성공 기준 | 실패 시 버릴 것 | 총평 |
+4. 최종 판정
+   - 결정: proceed / revise / park / kill
+   - 이유: 3문장 이내
+5. Decision Memo
+   - 지금 당장 할 일 1개
+   - 하지 말아야 할 일 1개
+   - 다음에 다시 논의할 조건 1개
+`.trim();
+
+export function buildEffectiveInstruction(inputInstruction: string) {
+  const trimmedInstruction = inputInstruction.trim();
+
+  return [
+    DEFAULT_DEBATE_FRAMEWORK,
+    "입력 아이디어:",
+    trimmedInstruction || "사용자가 별도 아이디어 설명을 제공하지 않았다.",
+  ].join("\n\n");
+}
 
 export function normalizeAgents(agents: AgentConfig[]) {
   const moderatorIndex = agents.findIndex((agent) =>
@@ -51,7 +120,7 @@ export function normalizeAgents(agents: AgentConfig[]) {
 export function buildDebateBrief(input: DebateInput, documents: ParsedDocument[]): DebateBrief {
   return {
     goal: input.goal.trim(),
-    instruction: input.instruction.trim(),
+    instruction: buildEffectiveInstruction(input.instruction),
     successCriteria: [
       "문서에서 직접 확인 가능한 근거를 반드시 인용한다.",
       "토론 목표에 맞는 하나의 결론 또는 명확한 선택지를 수렴한다.",
