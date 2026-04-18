@@ -3,11 +3,9 @@
 import { startTransition, useMemo, useState } from "react";
 import {
   AlertCircle,
-  ChevronDown,
   LoaderCircle,
   MessageSquareText,
   Plus,
-  Settings2,
   Sparkles,
 } from "lucide-react";
 
@@ -40,7 +38,7 @@ import {
   DebateStreamEvent,
   SessionSummary,
 } from "@/lib/types";
-import { formatTimestamp, truncate } from "@/lib/utils";
+import { formatTimestamp } from "@/lib/utils";
 
 function createFreshDraft() {
   return {
@@ -296,10 +294,10 @@ export function DebateApp({
     <>
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(24,24,27,0.08),_transparent_28%),linear-gradient(180deg,#fcfcfd_0%,#f4f4f5_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-[1680px] gap-4 p-4 lg:p-6">
-          <aside className="hidden w-[300px] shrink-0 lg:block">
-            <div className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col rounded-[28px] border border-zinc-200 bg-white/90 p-4 shadow-[0_20px_60px_rgba(15,23,42,0.06)] backdrop-blur">
+          <aside className="hidden w-[320px] shrink-0 lg:block">
+            <div className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col rounded-[28px] border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="space-y-3">
-                <Badge variant="outline" className="w-fit bg-zinc-100 text-zinc-900">
+                <Badge variant="outline" className="w-fit">
                   GPT Debate Studio
                 </Badge>
                 <div>
@@ -334,7 +332,11 @@ export function DebateApp({
                       <button
                         key={session.id}
                         type="button"
-                        className="w-full rounded-2xl border border-zinc-200 bg-white p-4 text-left transition hover:border-zinc-300 hover:bg-zinc-50"
+                        className={`w-full rounded-2xl border p-4 text-left transition ${
+                          activeSession?.id === session.id
+                            ? "border-zinc-950 bg-zinc-950 text-white"
+                            : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"
+                        }`}
                         onClick={() => void loadSession(session.id)}
                       >
                         <div className="mb-3 flex items-center justify-between gap-2">
@@ -343,17 +345,41 @@ export function DebateApp({
                           >
                             {session.status}
                           </Badge>
-                          <span className="text-xs text-zinc-500">
+                          <span
+                            className={`text-xs ${
+                              activeSession?.id === session.id
+                                ? "text-zinc-300"
+                                : "text-zinc-500"
+                            }`}
+                          >
                             {formatTimestamp(session.updatedAt)}
                           </span>
                         </div>
-                        <p className="text-sm font-medium leading-6 text-zinc-950">
+                        <p
+                          className={`text-sm font-medium leading-6 ${
+                            activeSession?.id === session.id
+                              ? "text-white"
+                              : "text-zinc-950"
+                          }`}
+                        >
                           {session.goal}
                         </p>
-                        <p className="mt-2 text-sm leading-6 text-zinc-500">
+                        <p
+                          className={`mt-2 text-sm leading-6 ${
+                            activeSession?.id === session.id
+                              ? "text-zinc-300"
+                              : "text-zinc-500"
+                          }`}
+                        >
                           {session.instruction}
                         </p>
-                        <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
+                        <div
+                          className={`mt-3 flex items-center justify-between text-xs ${
+                            activeSession?.id === session.id
+                              ? "text-zinc-300"
+                              : "text-zinc-500"
+                          }`}
+                        >
                           <span>{session.messageCount} messages</span>
                           <span>{session.agreementScore ?? 0}%</span>
                         </div>
@@ -366,94 +392,49 @@ export function DebateApp({
           </aside>
 
           <main className="flex min-w-0 flex-1 flex-col gap-4">
-            <header className="rounded-[28px] border border-zinc-200 bg-white/90 p-4 shadow-[0_20px_60px_rgba(15,23,42,0.05)] backdrop-blur">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={isRunning ? "default" : "secondary"}>
-                      {isRunning ? "Running" : "Ready"}
-                    </Badge>
-                    <Badge variant="outline">{statusMessage}</Badge>
-                    {selectedDocumentNames.length ? (
-                      <Badge variant="outline">{selectedDocumentNames.length} docs</Badge>
-                    ) : null}
-                    {selectedAgents.length ? (
-                      <Badge variant="outline">{selectedAgents.length} agents</Badge>
-                    ) : null}
-                    <Badge variant="outline">{selectedThreshold}% threshold</Badge>
-                    <Badge variant="outline">{selectedMaxRounds} rounds</Badge>
-                    <Badge variant="outline">{selectedModel}</Badge>
-                  </div>
-
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
-                      {selectedGoal || "새 세션을 시작해 토론 목표를 설정하세요."}
-                    </h2>
-                    <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-500">
-                      {selectedInstruction
-                        ? truncate(selectedInstruction, 180)
-                        : "Goal Composer와 Agent Builder는 새 세션 팝업에서만 설정합니다."}
-                    </p>
-                  </div>
-                </div>
-
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm lg:hidden">
+              <div>
+                <p className="text-sm font-medium text-zinc-950">Debate Sessions</p>
+                <p className="text-xs text-zinc-500">{statusMessage}</p>
               </div>
-
-              {(selectedGoal || selectedInstruction || selectedAgents.length > 0) && (
-                <details className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-                  <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-zinc-800">
-                    <span className="flex items-center gap-2">
-                      <Settings2 className="h-4 w-4" />
-                      자세한 세션 설정 보기
-                    </span>
-                    <ChevronDown className="h-4 w-4 text-zinc-500" />
-                  </summary>
-                  <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                    <div className="space-y-4">
-                      <MetaBlock label="Goal" value={selectedGoal || "설정되지 않음"} />
-                      <MetaBlock
-                        label="Instruction"
-                        value={selectedInstruction || "설정되지 않음"}
-                      />
-                      <MetaBlock
-                        label="Documents"
-                        value={
-                          selectedDocumentNames.length
-                            ? selectedDocumentNames.join(", ")
-                            : "아직 문서가 선택되지 않았습니다."
-                        }
-                      />
-                    </div>
-                    <div className="space-y-4">
-                      <MetaBlock
-                        label="Agents"
-                        value={selectedAgents
-                          .map((agent) => `${agent.role} · ${agent.persona}`)
-                          .join("\n")}
-                      />
-                      <MetaBlock
-                        label="Advanced"
-                        value={`Consensus ${selectedThreshold}% · Max rounds ${selectedMaxRounds} · Model ${selectedModel}`}
-                      />
-                    </div>
-                  </div>
-                </details>
-              )}
-            </header>
+              <Button onClick={openNewSessionModal}>
+                <Plus className="mr-2 h-4 w-4" />
+                새 세션
+              </Button>
+            </div>
 
             <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
               <Card className="min-h-[720px]">
                 <CardHeader className="border-b border-zinc-100 pb-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <CardTitle>Debate Timeline</CardTitle>
-                      <CardDescription>
-                        실제 배포된 앱처럼 본문은 대화 자체에 집중하도록 구성했습니다.
-                      </CardDescription>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={isRunning ? "default" : "secondary"}>
+                        {isRunning ? "Running" : "Ready"}
+                      </Badge>
+                      <Badge variant="outline">{statusMessage}</Badge>
+                      {selectedDocumentNames.length ? (
+                        <Badge variant="outline">{selectedDocumentNames.length} docs</Badge>
+                      ) : null}
+                      {selectedAgents.length ? (
+                        <Badge variant="outline">{selectedAgents.length} agents</Badge>
+                      ) : null}
+                      <Badge variant="outline">{selectedThreshold}% threshold</Badge>
+                      <Badge variant="outline">{selectedMaxRounds} rounds</Badge>
+                      <Badge variant="outline">{selectedModel}</Badge>
                     </div>
-                    <Badge variant="outline">
-                      {activeSession?.messages.length ?? 0} messages
-                    </Badge>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <CardTitle className="text-xl leading-8">
+                          {selectedGoal || "새 세션을 시작해 토론 목표를 설정하세요."}
+                        </CardTitle>
+                        <CardDescription className="mt-2 line-clamp-2 max-w-4xl">
+                          {selectedInstruction || "좌측 사이드바에서 새 세션을 시작하세요."}
+                        </CardDescription>
+                      </div>
+                      <Badge variant="outline">
+                        {activeSession?.messages.length ?? 0} messages
+                      </Badge>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="h-[640px] pt-5">
@@ -868,19 +849,6 @@ function Field({
         {helper ? <span className="text-xs text-zinc-500">{helper}</span> : null}
       </div>
       {children}
-    </div>
-  );
-}
-
-function MetaBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">
-        {label}
-      </p>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-800">
-        {value}
-      </p>
     </div>
   );
 }

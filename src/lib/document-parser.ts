@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+
 import { convert as htmlToText } from "html-to-text";
 import mammoth from "mammoth";
 import { nanoid } from "nanoid";
@@ -7,6 +9,7 @@ import { truncate } from "@/lib/utils";
 
 const CHUNK_SIZE = 1200;
 const CHUNK_OVERLAP = 200;
+const require = createRequire(import.meta.url);
 
 export function chunkText(documentId: string, input: string): DocumentChunk[] {
   const text = input.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
@@ -54,6 +57,15 @@ export function extractTextFromHtml(html: string) {
 }
 
 async function extractTextFromPdf(buffer: Buffer) {
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    const canvas = require("@napi-rs/canvas") as typeof import("@napi-rs/canvas");
+    globalThis.DOMMatrix = canvas.DOMMatrix as unknown as typeof globalThis.DOMMatrix;
+    globalThis.DOMPoint = canvas.DOMPoint as unknown as typeof globalThis.DOMPoint;
+    globalThis.DOMRect = canvas.DOMRect as unknown as typeof globalThis.DOMRect;
+    globalThis.ImageData = canvas.ImageData as unknown as typeof globalThis.ImageData;
+    globalThis.Path2D = canvas.Path2D as unknown as typeof globalThis.Path2D;
+  }
+
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   try {
