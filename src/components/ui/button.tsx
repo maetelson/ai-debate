@@ -16,12 +16,12 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
         variant === "default" &&
-          "bg-zinc-900 text-white shadow hover:bg-zinc-800",
+          "bg-primary text-primary-foreground shadow hover:bg-primary/90",
         variant === "outline" &&
-          "border border-zinc-300 bg-white text-zinc-900 shadow-sm hover:bg-zinc-50",
-        variant === "ghost" && "text-zinc-700 hover:bg-zinc-100",
+          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+        variant === "ghost" && "hover:bg-accent hover:text-accent-foreground",
         size === "sm" && "h-8 rounded-md px-3 text-xs",
         size === "default" && "h-9 px-4 py-2",
         size === "lg" && "h-10 rounded-md px-8",

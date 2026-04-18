@@ -15,10 +15,10 @@ export function Badge({
     <span
       className={cn(
         "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium",
-        variant === "default" && "border-zinc-900 bg-zinc-900 text-white",
-        variant === "secondary" && "border-zinc-200 bg-zinc-100 text-zinc-700",
-        variant === "outline" && "border-zinc-300 bg-white text-zinc-700",
-        variant === "danger" && "border-zinc-300 bg-zinc-100 text-zinc-800",
+        variant === "default" && "border-transparent bg-primary text-primary-foreground",
+        variant === "secondary" && "border-transparent bg-secondary text-secondary-foreground",
+        variant === "outline" && "text-foreground",
+        variant === "danger" && "border-transparent bg-destructive/10 text-destructive",
         className
       )}
       {...props}
